@@ -1,0 +1,44 @@
+pluginManagement {
+    repositories {
+        maven { url "https://maven.fabricmc.net/" }
+        maven { url "https://maven.architectury.dev/" }
+        maven { url "https://files.minecraftforge.net/maven/" }
+        maven { url "https://maven.neoforged.net/releases/" }
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'SimpleCraftEditor'
+
+def minecraftVer = gradle.startParameter.projectProperties.containsKey('minecraft_version')
+        ? gradle.startParameter.projectProperties.get('minecraft_version')
+        : new File(rootDir, 'gradle.properties').with { f ->
+    def props = new Properties()
+    f.withInputStream { props.load(it) }
+    props.getProperty('minecraft_version')
+}
+
+// Each supported Minecraft version maps to its own source tree.
+//   1.20.1  -> Forge + Fabric, kept at the repository root (legacy Architectury 9.x / Java 17).
+//   1.21.1  -> NeoForge + Fabric, lives in v1.21.1/ (Architectury 13.x / Java 21).
+def treeByVersion = [
+        '1.21.1': 'v1.21.1',
+]
+
+if (minecraftVer.startsWith("1.20")) {
+    include 'common'
+    include 'fabric'
+    include 'forge'
+} else {
+    def treeDir = treeByVersion[minecraftVer]
+    if (treeDir == null) {
+        throw new GradleException("No source tree mapped for minecraft_version='${minecraftVer}'. " +
+                "Add it to treeByVersion in settings.gradle.")
+    }
+    include 'common'
+    include 'fabric'
+    include 'neoforge'
+    project(':common').projectDir = file("${treeDir}/common")
+    project(':fabric').projectDir = file("${treeDir}/fabric")
+    project(':neoforge').projectDir = file("${treeDir}/neoforge")
+}

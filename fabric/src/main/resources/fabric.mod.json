@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "sce",
+  "version": "${version}",
+  "name": "Simple Craft Editor",
+  "description": "In-game editor for vanilla and modded crafting recipes.",
+  "authors": [
+    "MateoF24"
+  ],
+  "contact": {
+    "homepage": "https://github.com/MateoF024/SimpleCraftEditor"
+  },
+  "license": "All-Rights-Reserved",
+  "icon": "assets/sce/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "org.mateof24.sce.fabric.SimpleCraftEditorFabric"
+    ],
+    "client": [
+      "org.mateof24.sce.fabric.client.SimpleCraftEditorFabricClient"
+    ]
+  },
+  "mixins": [
+    "sce.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "architectury": ">=9.2.14",
+    "fabric-api": "*"
+  }
+}

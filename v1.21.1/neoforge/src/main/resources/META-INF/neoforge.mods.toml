@@ -1,0 +1,38 @@
+modLoader = "javafml"
+loaderVersion = "[2,)"
+issueTrackerURL = "https://github.com/MateoF024/SimpleCraftEditor/issues"
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "sce"
+version = "${version}"
+displayName = "Simple Craft Editor"
+authors = "MateoF24"
+description = '''
+In-game editor for vanilla and modded crafting recipes.
+'''
+#logoFile = "icon.png"
+
+[[dependencies.sce]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sce]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sce]]
+modId = "architectury"
+type = "required"
+versionRange = "[13.0.8,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[mixins]]
+config = "sce.mixins.json"

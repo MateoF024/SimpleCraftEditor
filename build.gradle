@@ -1,0 +1,70 @@
+plugins {
+    id 'dev.architectury.loom' version '1.14-SNAPSHOT' apply false
+    id 'architectury-plugin' version '3.4-SNAPSHOT'
+    id 'com.github.johnrengelman.shadow' version '8.1.1' apply false
+}
+
+architectury {
+    minecraft = project.minecraft_version
+}
+
+allprojects {
+    group = rootProject.maven_group
+    version = rootProject.mod_version
+}
+
+def isLegacy = rootProject.minecraft_version.startsWith("1.20")
+
+subprojects {
+    apply plugin: 'dev.architectury.loom'
+    apply plugin: 'architectury-plugin'
+    apply plugin: 'maven-publish'
+
+    base {
+        // Jars are named e.g. SimpleCraftEditor-fabric-1.20.1, keeping every version's output distinct.
+        archivesName = "$rootProject.archives_name-$project.name-$rootProject.minecraft_version"
+    }
+
+    repositories {
+        maven { url "https://maven.neoforged.net/releases/" }
+    }
+
+    dependencies {
+        minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
+        mappings loom.officialMojangMappings()
+    }
+
+    java {
+        def javaVer = isLegacy ? JavaVersion.VERSION_17 : JavaVersion.VERSION_21
+        sourceCompatibility = javaVer
+        targetCompatibility = javaVer
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        it.options.release = isLegacy ? 17 : 21
+    }
+
+    afterEvaluate {
+        // Collect the final, remapped loader jars under the root build/libs directory.
+        tasks.withType(AbstractArchiveTask).configureEach {
+            if (project.name != 'common'
+                    && !name.toLowerCase().contains('source')
+                    && !archiveClassifier.getOrElse('').toLowerCase().contains('dev')) {
+                destinationDirectory = rootProject.layout.buildDirectory.dir("libs")
+            }
+        }
+    }
+
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                artifactId = base.archivesName.get()
+                from components.java
+            }
+        }
+
+        repositories {
+            // Add repositories to publish to here.
+        }
+    }
+}
