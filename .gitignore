@@ -19,3 +19,9 @@ hs_err_pid*
 
 # Common working directory
 run
+
+# Local reference/dependency jars (mods used only for compiling & study)
+libs
+
+# Planning docs kept out of the repo
+roadmap.md
