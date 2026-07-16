@@ -15,35 +15,30 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
+import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 import org.mateof24.sce.net.SceNetworking;
 
 /**
- * Recipe editor built on a real synced container, so the input grid, the output and the player inventory
+ * Recipe editor built on a real synced container, so the input slots, the output and the player inventory
  * all behave like a vanilla screen: pick up, place, split, drag, shift-click and hotbar keys work natively,
- * and items are returned to the player on close. Tags and prefilled (edited) recipes render as ghosts in
- * empty slots; a physical item in a slot always overrides its ghost.
+ * and items are returned to the player on close. The slot layout matches the recipe type (3x3 for crafting,
+ * a single input for cooking/stonecutting); changing the type re-opens the editor with the right layout.
+ * Tags and prefilled recipes render as ghosts in empty slots; a physical item always overrides its ghost.
  */
 @Environment(EnvType.CLIENT)
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
-    private static final RecipeDraft.Kind[] MODE_KIND = {
-            RecipeDraft.Kind.CRAFTING_SHAPELESS, RecipeDraft.Kind.CRAFTING_SHAPED,
-            RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING,
-            RecipeDraft.Kind.STONECUTTING};
-    private static final RecipeDraft.Cooking[] MODE_COOK = {
-            null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
-            RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null};
-    private static final String[] MODE_LABEL = {
-            "Shapeless", "Shaped", "Smelting", "Blasting", "Smoking", "Campfire", "Stonecutting"};
+    private final int mode;
+    private final int inputCount;
 
     private final IngredientValue[] overlay = new IngredientValue[9];
     private IngredientValue overlayResult = IngredientValue.empty();
     private int overlayResultCount = 1;
 
-    private int modeIndex;
     private int selectedInput = -1;
     private String status = "";
 
@@ -59,8 +54,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = 210;
+        this.imageWidth = 240;
         this.imageHeight = 228;
+        this.mode = menu.mode();
+        this.inputCount = menu.inputCount();
         this.idValue = menu.editId() != null ? menu.editId().toString() : "sce:new_recipe";
         initFromBase(menu.baseDraft());
     }
@@ -72,7 +69,6 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (base == null) {
             return;
         }
-        modeIndex = modeIndexOf(base);
         overlayResult = base.result;
         overlayResultCount = base.resultCount;
         pendingExp = base.experience;
@@ -92,63 +88,65 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
-    private static int modeIndexOf(RecipeDraft base) {
-        for (int i = 0; i < MODE_KIND.length; i++) {
-            if (MODE_KIND[i] == base.kind && (MODE_COOK[i] == null || MODE_COOK[i] == base.cooking)) {
-                return i;
-            }
-        }
-        return 0;
-    }
-
-    private boolean cooking() {
-        return MODE_KIND[modeIndex] == RecipeDraft.Kind.COOKING;
-    }
-
     @Override
     protected void init() {
         super.init();
 
-        addRenderableWidget(Button.builder(Component.literal("Type: " + MODE_LABEL[modeIndex]), b -> {
-            modeIndex = (modeIndex + 1) % MODE_KIND.length;
-            rebuildWidgets();
-        }).bounds(leftPos + 30, topPos + 4, 150, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Type: " + RecipeModes.label(mode)), b ->
+                SceNetworking.sendOpenEditor(idValue, RecipeModes.clamp(mode + 1)))
+                .bounds(leftPos + 45, topPos + 4, 150, 16).build());
 
-        idBox = new EditBox(font, leftPos + 8, topPos + 22, 150, 16, Component.literal("id"));
+        idBox = new EditBox(font, leftPos + 8, topPos + 22, 180, 16, Component.literal("id"));
         idBox.setMaxLength(200);
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
+        addRenderableWidget(Button.builder(Component.literal("Load"), b ->
+                SceNetworking.sendOpenEditor(idValue, -1)).bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
-        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 104, 16, Component.literal("tag"));
+        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.literal("tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tagValue);
         tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
         addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag())
-                .bounds(leftPos + 116, topPos + 98, 52, 16).build());
-        addRenderableWidget(Button.builder(Component.literal("Clr"), b -> clearSelected())
-                .bounds(leftPos + 170, topPos + 98, 32, 16).build());
+                .bounds(leftPos + 110, topPos + 98, 54, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Clear Slot"), b -> clearSelected())
+                .bounds(leftPos + 168, topPos + 98, 64, 16).build());
 
-        if (cooking()) {
-            expBox = new EditBox(font, leftPos + 150, topPos + 42, 52, 16, Component.literal("exp"));
+        if (RecipeModes.isCooking(mode)) {
+            expBox = new EditBox(font, leftPos + 180, topPos + 42, 52, 16, Component.literal("exp"));
             expBox.setValue(Float.toString(pendingExp));
             expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
             addRenderableWidget(expBox);
-            timeBox = new EditBox(font, leftPos + 150, topPos + 64, 52, 16, Component.literal("time"));
+            timeBox = new EditBox(font, leftPos + 180, topPos + 66, 52, 16, Component.literal("time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
         }
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 64, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 74, topPos + 204, 66, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 142, topPos + 204, 60, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 72, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 84, topPos + 204, 72, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 160, topPos + 204, 72, 20).build());
+    }
+
+    @Override
+    public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (key == GLFW.GLFW_KEY_ESCAPE) {
+            onClose();
+            return true;
+        }
+        // While an edit box is focused, never let letter keys (E) or number keys act as inventory shortcuts.
+        if (getFocused() instanceof EditBox editBox) {
+            editBox.keyPressed(key, scanCode, modifiers);
+            return true;
+        }
+        return super.keyPressed(key, scanCode, modifiers);
     }
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
-        if (slotId >= 0 && slotId < RecipeEditorMenu.GRID_SIZE) {
+        if (slotId >= 0 && slotId < inputCount) {
             selectedInput = slotId;
         }
         super.slotClicked(slot, slotId, mouseButton, type);
@@ -184,18 +182,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return;
         }
         RecipeDraft draft = new RecipeDraft();
-        draft.kind = MODE_KIND[modeIndex];
-        draft.cooking = MODE_COOK[modeIndex] != null ? MODE_COOK[modeIndex] : RecipeDraft.Cooking.SMELTING;
+        draft.kind = RecipeModes.kind(mode);
+        draft.cooking = RecipeModes.cooking(mode);
         draft.id = id;
         draft.width = 3;
         draft.height = 3;
         draft.inputs.clear();
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < inputCount; i++) {
             draft.inputs.add(resolveInput(i));
         }
         draft.result = resolveResult();
         draft.resultCount = Math.max(1, resolveResultCount());
-        if (cooking()) {
+        if (RecipeModes.isCooking(mode)) {
             draft.experience = pendingExp;
             draft.cookingTime = pendingTime;
         }
@@ -246,20 +244,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         for (Slot slot : menu.slots) {
             drawSlot(graphics, leftPos + slot.x, topPos + slot.y);
         }
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < inputCount; i++) {
+            Slot slot = menu.inputSlot(i);
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
             if (menu.gridItem(i).isEmpty()) {
-                drawGhost(graphics, overlay[i], leftPos + 34 + (i % 3) * 18, topPos + 42 + (i / 3) * 18, 0);
+                drawGhost(graphics, overlay[i], x, y, 0);
             }
             if (i == selectedInput) {
-                int x = leftPos + 34 + (i % 3) * 18;
-                int y = topPos + 42 + (i / 3) * 18;
                 graphics.fill(x, y, x + 16, y + 16, 0x40FFFFFF);
             }
         }
+        Slot out = menu.outputSlot();
         if (menu.outputItem().isEmpty()) {
-            drawGhost(graphics, overlayResult, leftPos + 128, topPos + 60, overlayResultCount);
+            drawGhost(graphics, overlayResult, leftPos + out.x, topPos + out.y, overlayResultCount);
         }
-        graphics.drawString(font, "->", leftPos + 110, topPos + 64, 0xFFFFFF, false);
+        graphics.drawString(font, "->", leftPos + out.x - 16, topPos + out.y + 4, 0xFFFFFF, false);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
@@ -294,12 +294,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, "tag:", 8, 88, 0xA0A0A0, false);
-        if (cooking()) {
-            graphics.drawString(font, "xp", 134, 46, 0xA0A0A0, false);
-            graphics.drawString(font, "time", 128, 68, 0xA0A0A0, false);
+        if (RecipeModes.isCooking(mode)) {
+            graphics.drawString(font, "xp", 164, 46, 0xA0A0A0, false);
+            graphics.drawString(font, "time", 156, 70, 0xA0A0A0, false);
         }
         if (!status.isEmpty()) {
-            graphics.drawString(font, status, 8, imageHeight - 10, 0xE0E070, false);
+            graphics.drawString(font, status, 8, imageHeight - 11, 0xE0E070, false);
         }
     }
 

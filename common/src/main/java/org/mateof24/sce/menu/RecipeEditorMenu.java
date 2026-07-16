@@ -14,53 +14,66 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
+import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.registry.SceMenus;
 
 /**
- * Synced container for the recipe editor. The 3x3 input grid and the output are backed by temporary
+ * Synced container for the recipe editor. The input slots and the output are backed by temporary
  * containers, so items placed there behave exactly like a crafting table (real cursor interaction,
  * splitting, dragging, hotbar swaps, shift-click) and are returned to the player when the screen closes.
- * The player inventory slots are the real inventory. Tag ingredients and prefilled recipes are drawn as
- * ghosts client-side (see {@code #baseDraft()}); they are never physical items, so they never dupe.
+ * The player inventory slots are the real inventory. The slot layout depends on the recipe type: a 3x3
+ * grid for crafting, a single input for cooking/stonecutting. Tag ingredients and prefilled recipes are
+ * drawn as ghosts client-side; they are never physical items, so they never dupe.
  */
 public class RecipeEditorMenu extends AbstractContainerMenu {
-    public static final int GRID_SIZE = 9;
-    private static final int GRID_START = 0;
-    private static final int OUTPUT_SLOT = 9;
-    private static final int INV_START = 10;
-    private static final int INV_END = INV_START + 36;
-
-    private final Container grid = new SimpleContainer(GRID_SIZE);
+    private final Container grid = new SimpleContainer(9);
     private final Container output = new SimpleContainer(1);
 
     private final ResourceLocation editId;
+    private final int mode;
+    private final int inputCount;
     @Nullable
     private final RecipeDraft baseDraft;
 
     /** Client factory (from {@link dev.architectury.registry.menu.MenuRegistry#ofExtended}). */
     public RecipeEditorMenu(int containerId, Inventory inventory, FriendlyByteBuf extraData) {
-        this(containerId, inventory, parseId(extraData.readUtf()), extraData.readUtf(1024 * 1024));
+        this(containerId, inventory, parseId(extraData.readUtf()), extraData.readUtf(1024 * 1024), extraData.readVarInt());
     }
 
     /** Server factory. */
-    public RecipeEditorMenu(int containerId, Inventory inventory, @Nullable ResourceLocation editId, String editJson) {
+    public RecipeEditorMenu(int containerId, Inventory inventory, @Nullable ResourceLocation editId, String editJson, int mode) {
         super(SceMenus.RECIPE_EDITOR.get(), containerId);
         this.editId = editId;
+        this.mode = RecipeModes.clamp(mode);
         this.baseDraft = parseDraft(editId, editJson);
+        this.inputCount = RecipeModes.inputCount(this.mode);
 
-        for (int i = 0; i < GRID_SIZE; i++) {
-            addSlot(new Slot(grid, i, 34 + (i % 3) * 18, 42 + (i / 3) * 18));
+        if (RecipeModes.isCrafting(this.mode)) {
+            for (int i = 0; i < 9; i++) {
+                addSlot(new Slot(grid, i, 44 + (i % 3) * 18, 42 + (i / 3) * 18));
+            }
+            addSlot(new Slot(output, 0, 150, 60));
+        } else {
+            addSlot(new Slot(grid, 0, 60, 58));
+            addSlot(new Slot(output, 0, 140, 58));
         }
-        addSlot(new Slot(output, 0, 128, 60));
 
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, 9 + row * 9 + col, 24 + col * 18, 120 + row * 18));
+                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 120 + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 24 + col * 18, 180));
+            addSlot(new Slot(inventory, col, 39 + col * 18, 180));
         }
+    }
+
+    public int mode() {
+        return mode;
+    }
+
+    public int inputCount() {
+        return inputCount;
     }
 
     @Nullable
@@ -73,6 +86,15 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         return baseDraft;
     }
 
+    /** Screen-relative position of an input slot. */
+    public Slot inputSlot(int index) {
+        return slots.get(index);
+    }
+
+    public Slot outputSlot() {
+        return slots.get(inputCount);
+    }
+
     public ItemStack gridItem(int index) {
         return grid.getItem(index);
     }
@@ -83,16 +105,18 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
+        int invStart = inputCount + 1;
+        int invEnd = invStart + 36;
         ItemStack result = ItemStack.EMPTY;
         Slot slot = slots.get(index);
         if (slot != null && slot.hasItem()) {
             ItemStack stack = slot.getItem();
             result = stack.copy();
-            if (index < INV_START) {
-                if (!moveItemStackTo(stack, INV_START, INV_END, true)) {
+            if (index < invStart) {
+                if (!moveItemStackTo(stack, invStart, invEnd, true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!moveItemStackTo(stack, GRID_START, OUTPUT_SLOT + 1, false)) {
+            } else if (!moveItemStackTo(stack, 0, inputCount + 1, false)) {
                 return ItemStack.EMPTY;
             }
             if (stack.isEmpty()) {

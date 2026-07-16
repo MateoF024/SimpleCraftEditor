@@ -20,6 +20,9 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.jetbrains.annotations.Nullable;
 import org.mateof24.sce.SimpleCraftEditor;
+import org.mateof24.sce.core.edit.RecipeCompiler;
+import org.mateof24.sce.core.edit.RecipeDraft;
+import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 
@@ -84,7 +87,8 @@ public final class SceNetworking {
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, OPEN_EDITOR, (buf, context) -> {
             String idString = buf.readUtf();
-            context.queue(() -> handleOpenEditor(context.getPlayer(), idString));
+            int mode = buf.readVarInt();
+            context.queue(() -> handleOpenEditor(context.getPlayer(), idString, mode));
         });
 
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
@@ -119,27 +123,37 @@ public final class SceNetworking {
         NetworkManager.sendToPlayer(player, RECIPE_JSON, buf);
     }
 
-    private static void handleOpenEditor(Player sender, String idString) {
+    private static void handleOpenEditor(Player sender, String idString, int requestedMode) {
         if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
             deny(sender);
             return;
         }
         ResourceLocation editId = idString.isEmpty() ? null : ResourceLocation.tryParse(idString);
         String editJson = "";
+        int mode = Math.max(0, requestedMode);
         if (editId != null) {
             JsonObject json = RecipeStateManager.INSTANCE.rawJson(editId);
             if (json != null) {
                 editJson = json.toString();
+                if (requestedMode < 0) {
+                    mode = deriveMode(editId, json);
+                }
             }
         }
-        MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson));
+        MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson, mode));
     }
 
-    private record EditorMenuProvider(@Nullable ResourceLocation editId, String editJson) implements ExtendedMenuProvider {
+    private static int deriveMode(ResourceLocation id, JsonObject json) {
+        RecipeDraft draft = RecipeCompiler.fromJson(id, json);
+        return draft == null ? 0 : RecipeModes.indexOf(draft);
+    }
+
+    private record EditorMenuProvider(@Nullable ResourceLocation editId, String editJson, int mode) implements ExtendedMenuProvider {
         @Override
         public void saveExtraData(FriendlyByteBuf buf) {
             buf.writeUtf(editId == null ? "" : editId.toString());
             buf.writeUtf(editJson, MAX_JSON);
+            buf.writeVarInt(mode);
         }
 
         @Override
@@ -149,7 +163,7 @@ public final class SceNetworking {
 
         @Override
         public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player player) {
-            return new RecipeEditorMenu(containerId, inventory, editId, editJson);
+            return new RecipeEditorMenu(containerId, inventory, editId, editJson, mode);
         }
     }
 
@@ -227,10 +241,11 @@ public final class SceNetworking {
         NetworkManager.sendToServer(channel, buf);
     }
 
-    /** Asks the server to open the editor menu; empty id means a fresh recipe. */
-    public static void sendOpenEditor(String idString) {
+    /** Asks the server to open the editor menu; empty id means a fresh recipe, mode -1 means "derive from recipe". */
+    public static void sendOpenEditor(String idString, int mode) {
         FriendlyByteBuf buf = buffer();
         buf.writeUtf(idString);
+        buf.writeVarInt(mode);
         NetworkManager.sendToServer(OPEN_EDITOR, buf);
     }
 }

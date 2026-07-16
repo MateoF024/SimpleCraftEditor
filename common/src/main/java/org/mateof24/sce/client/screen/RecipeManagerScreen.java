@@ -47,7 +47,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
         lastStateSize = rows.size();
 
         addRenderableWidget(Button.builder(Component.literal("New Recipe…"), b ->
-                SceNetworking.sendOpenEditor("")).bounds(width / 2 - 155, height - 30, 100, 20).build());
+                SceNetworking.sendOpenEditor("", 0)).bounds(width / 2 - 155, height - 30, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
                 .bounds(width / 2 + 55, height - 30, 100, 20).build());
 
@@ -58,7 +58,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int y = LIST_TOP + i * ROW_HEIGHT;
             if (row.disabled()) {
                 addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
-                        SceNetworking.sendOpenEditor(row.id().toString())).bounds(width / 2 + 30, y, 55, 20).build());
+                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 30, y, 55, 20).build());
                 addRenderableWidget(Button.builder(Component.literal("Restore"), b -> {
                     SceNetworking.sendSimple(SceNetworking.ENABLE, row.id());
                     scheduleRefresh();
