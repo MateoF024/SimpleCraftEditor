@@ -22,9 +22,14 @@ import org.mateof24.sce.net.SceNetworking;
  * Our own recipe editor. Independent of JEI/EMI: it shows the recipe's slots plus the player's inventory
  * so ingredients can be picked straight from it. Left-click an inventory item to hold it, then left-click a
  * recipe slot to place it; right-click a slot to clear it. Tags are applied via the tag field.
+ *
+ * <p>The whole UI is laid out as a compact, vertically centred panel so nothing overlaps regardless of
+ * window size.
  */
 @Environment(EnvType.CLIENT)
 public class RecipeEditorScreen extends BaseSceScreen {
+    private static final int SLOT = 18;
+
     private RecipeDraft draft;
     private final ResourceLocation loadId;
     private boolean requested;
@@ -38,6 +43,7 @@ public class RecipeEditorScreen extends BaseSceScreen {
     private EditBox expBox;
     private EditBox timeBox;
 
+    private int topPos;
     private int gridX;
     private int gridY;
 
@@ -65,41 +71,44 @@ public class RecipeEditorScreen extends BaseSceScreen {
             ClientEditorState.requestJson(loadId, json -> onLoaded(loadId, json));
         }
 
+        int contentHeight = cooking() ? 254 : 234;
+        topPos = Math.max(8, (height - contentHeight) / 2);
         gridX = width / 2 - 110;
-        gridY = 56;
+        gridY = topPos + 42;
 
-        idBox = new EditBox(font, width / 2 - 110, 26, 180, 18, Component.literal("id"));
+        addRenderableWidget(Button.builder(Component.literal("Type: " + kindLabel()), b -> cycleKind())
+                .bounds(width / 2 - 75, topPos + 4, 150, 16).build());
+
+        idBox = new EditBox(font, width / 2 - 120, topPos + 22, 180, 16, Component.literal("id"));
         idBox.setMaxLength(200);
         idBox.setValue(draft.id != null ? draft.id.toString() : "sce:new_recipe");
         addRenderableWidget(idBox);
         addRenderableWidget(Button.builder(Component.literal("Load"), b -> loadFromId())
-                .bounds(width / 2 + 74, 26, 40, 18).build());
+                .bounds(width / 2 + 64, topPos + 22, 40, 16).build());
 
-        addRenderableWidget(Button.builder(Component.literal("Type: " + kindLabel()), b -> cycleKind())
-                .bounds(width / 2 - 110, 6, 150, 16).build());
+        int outX = outputX();
+        addRenderableWidget(Button.builder(Component.literal("-"), b -> adjustCount(-1)).bounds(outX + 22, gridY + SLOT, 16, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("+"), b -> adjustCount(1)).bounds(outX + 60, gridY + SLOT, 16, 16).build());
 
-        int rightX = gridX + 150;
-        addRenderableWidget(Button.builder(Component.literal("-"), b -> adjustCount(-1)).bounds(rightX, gridY + 42, 16, 16).build());
-        addRenderableWidget(Button.builder(Component.literal("+"), b -> adjustCount(1)).bounds(rightX + 40, gridY + 42, 16, 16).build());
-
-        tagBox = new EditBox(font, gridX, gridY + 70, 150, 16, Component.literal("tag"));
+        tagBox = new EditBox(font, gridX, topPos + 102, 150, 16, Component.literal("tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue("");
         addRenderableWidget(tagBox);
-        addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag()).bounds(gridX + 154, gridY + 70, 56, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag()).bounds(gridX + 154, topPos + 102, 56, 16).build());
 
-        if (draft.kind == RecipeDraft.Kind.COOKING) {
-            expBox = new EditBox(font, gridX, gridY + 92, 70, 16, Component.literal("exp"));
+        if (cooking()) {
+            expBox = new EditBox(font, gridX, topPos + 120, 70, 16, Component.literal("exp"));
             expBox.setValue(Float.toString(draft.experience));
             addRenderableWidget(expBox);
-            timeBox = new EditBox(font, gridX + 90, gridY + 92, 70, 16, Component.literal("time"));
+            timeBox = new EditBox(font, gridX + 90, topPos + 120, 70, 16, Component.literal("time"));
             timeBox.setValue(Integer.toString(draft.cookingTime));
             addRenderableWidget(timeBox);
         }
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(width / 2 - 154, height - 28, 90, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(width / 2 - 60, height - 28, 90, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose()).bounds(width / 2 + 64, height - 28, 90, 20).build());
+        int buttonY = buttonY();
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(width / 2 - 150, buttonY, 96, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(width / 2 - 48, buttonY, 96, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose()).bounds(width / 2 + 54, buttonY, 96, 20).build());
     }
 
     private void onLoaded(ResourceLocation id, JsonObject json) {
@@ -168,7 +177,7 @@ public class RecipeEditorScreen extends BaseSceScreen {
             return;
         }
         draft.id = id;
-        if (draft.kind == RecipeDraft.Kind.COOKING) {
+        if (cooking()) {
             draft.experience = parseFloat(expBox.getValue(), draft.experience);
             draft.cookingTime = parseInt(timeBox.getValue(), draft.cookingTime);
         }
@@ -189,41 +198,44 @@ public class RecipeEditorScreen extends BaseSceScreen {
 
     // ------------------------------------------------------------------ layout helpers
 
+    private boolean cooking() {
+        return draft.kind == RecipeDraft.Kind.COOKING;
+    }
+
+    private boolean singleInput() {
+        return draft.kind == RecipeDraft.Kind.COOKING || draft.kind == RecipeDraft.Kind.STONECUTTING;
+    }
+
     private int inputSlotCount() {
-        return switch (draft.kind) {
-            case CRAFTING_SHAPED, CRAFTING_SHAPELESS -> 9;
-            case COOKING, STONECUTTING -> 1;
-        };
+        return singleInput() ? 1 : 9;
     }
 
     private int inputSlotX(int index) {
-        if (draft.kind == RecipeDraft.Kind.COOKING || draft.kind == RecipeDraft.Kind.STONECUTTING) {
-            return gridX;
-        }
-        return gridX + (index % 3) * 20;
+        return singleInput() ? gridX : gridX + (index % 3) * SLOT;
     }
 
     private int inputSlotY(int index) {
-        if (draft.kind == RecipeDraft.Kind.COOKING || draft.kind == RecipeDraft.Kind.STONECUTTING) {
-            return gridY + 20;
-        }
-        return gridY + (index / 3) * 20;
+        return singleInput() ? gridY + SLOT : gridY + (index / 3) * SLOT;
     }
 
     private int outputX() {
-        return gridX + 110;
+        return gridX + 3 * SLOT + 22;
     }
 
     private int outputY() {
-        return gridY + 20;
+        return gridY + SLOT;
     }
 
     private int invX() {
-        return width / 2 - (9 * 18) / 2;
+        return width / 2 - (9 * SLOT) / 2;
     }
 
-    private int invY() {
-        return height - 96;
+    private int invTop() {
+        return topPos + (cooking() ? 152 : 132);
+    }
+
+    private int buttonY() {
+        return invTop() + 4 * SLOT + 6;
     }
 
     // ------------------------------------------------------------------ input
@@ -250,8 +262,8 @@ public class RecipeEditorScreen extends BaseSceScreen {
             return true;
         }
         for (int i = 0; i < 36; i++) {
-            int x = invX() + (i % 9) * 18;
-            int y = invY() + (i / 9) * 18;
+            int x = invX() + (i % 9) * SLOT;
+            int y = invTop() + (i / 9) * SLOT;
             if (isOverSlot(mouseX, mouseY, x, y)) {
                 ItemStack stack = minecraft.player.getInventory().getItem(i);
                 cursor = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
@@ -284,13 +296,13 @@ public class RecipeEditorScreen extends BaseSceScreen {
 
         drawSlot(graphics, outputX(), outputY());
         drawResult(graphics, outputX(), outputY());
-        graphics.drawString(font, "->", outputX() - 16, outputY() + 4, 0xFFFFFF);
-        graphics.drawString(font, "x" + draft.resultCount, gridX + 168, gridY + 46, 0xFFFFFF);
+        graphics.drawString(font, "->", outputX() - 14, outputY() + 4, 0xFFFFFF);
+        graphics.drawString(font, "x" + draft.resultCount, outputX() + 42, gridY + SLOT + 4, 0xFFFFFF);
 
-        graphics.drawString(font, "Inventory (click to hold):", invX(), invY() - 12, 0xA0A0A0);
+        graphics.drawString(font, "Inventory (click to hold):", invX(), invTop() - 11, 0xA0A0A0);
         for (int i = 0; i < 36; i++) {
-            int x = invX() + (i % 9) * 18;
-            int y = invY() + (i / 9) * 18;
+            int x = invX() + (i % 9) * SLOT;
+            int y = invTop() + (i / 9) * SLOT;
             drawSlot(graphics, x, y);
             ItemStack stack = minecraft.player.getInventory().getItem(i);
             if (!stack.isEmpty()) {
@@ -300,7 +312,8 @@ public class RecipeEditorScreen extends BaseSceScreen {
         }
 
         if (!status.isEmpty()) {
-            graphics.drawString(font, status, width / 2 - 154, height - 42, 0xE0E070);
+            int statusY = Math.min(buttonY() + 26, height - 10);
+            graphics.drawCenteredString(font, status, width / 2, statusY, 0xE0E070);
         }
 
         if (!cursor.isEmpty()) {
