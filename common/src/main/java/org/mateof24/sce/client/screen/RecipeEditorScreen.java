@@ -13,9 +13,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.ChatFormatting;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
@@ -148,6 +151,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slotId >= 0 && slotId < inputCount) {
             selectedInput = slotId;
+            // Surface the slot's current tag (if any) in the field so it can be edited.
+            IngredientValue current = overlay[slotId];
+            tagValue = current != null && current.kind() == IngredientValue.Kind.TAG ? current.id().toString() : "";
+            if (tagBox != null) {
+                tagBox.setValue(tagValue);
+            }
         }
         super.slotClicked(slot, slotId, mouseButton, type);
     }
@@ -289,6 +298,49 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return new ItemStack(Items.NAME_TAG);
         }
         return new ItemStack(BuiltInRegistries.ITEM.get(value.id()));
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        renderRecipeTooltip(graphics, mouseX, mouseY);
+    }
+
+    /** Tooltips for the recipe slots' ghost items and tags (real items get their native tooltip from super). */
+    private void renderRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!menu.getCarried().isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < inputCount; i++) {
+            if (menu.gridItem(i).isEmpty() && isOverSlot(menu.inputSlot(i), mouseX, mouseY)) {
+                showGhostTooltip(graphics, overlay[i], mouseX, mouseY);
+                return;
+            }
+        }
+        if (menu.outputItem().isEmpty() && isOverSlot(menu.outputSlot(), mouseX, mouseY)) {
+            showGhostTooltip(graphics, overlayResult, mouseX, mouseY);
+        }
+    }
+
+    private boolean isOverSlot(Slot slot, int mouseX, int mouseY) {
+        int x = leftPos + slot.x;
+        int y = topPos + slot.y;
+        return mouseX >= x && mouseX < x + 16 && mouseY >= y && mouseY < y + 16;
+    }
+
+    private void showGhostTooltip(GuiGraphics graphics, IngredientValue value, int mouseX, int mouseY) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        if (value.kind() == IngredientValue.Kind.TAG) {
+            graphics.renderComponentTooltip(font, List.<Component>of(
+                    Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN),
+                    Component.literal("Tag ingredient").withStyle(ChatFormatting.GRAY)), mouseX, mouseY);
+        } else {
+            graphics.renderComponentTooltip(font, List.<Component>of(
+                    stackFor(value).getHoverName(),
+                    Component.literal("Ghost — click to place a real item").withStyle(ChatFormatting.DARK_GRAY)), mouseX, mouseY);
+        }
     }
 
     @Override
