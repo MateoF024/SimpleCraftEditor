@@ -132,7 +132,7 @@ public final class SceNetworking {
         String editJson = "";
         int mode = Math.max(0, requestedMode);
         if (editId != null) {
-            JsonObject json = RecipeStateManager.INSTANCE.rawJson(editId);
+            JsonObject json = RecipeStateManager.INSTANCE.editorJson(editId);
             if (json != null) {
                 editJson = json.toString();
                 if (requestedMode < 0) {

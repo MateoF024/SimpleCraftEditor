@@ -64,6 +64,8 @@ public class RecipeManagerScreen extends BaseSceScreen {
                     scheduleRefresh();
                 }).bounds(width / 2 + 90, y, 70, 20).build());
             } else {
+                addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
+                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 30, y, 55, 20).build());
                 addRenderableWidget(Button.builder(Component.literal("Delete"), b -> {
                     SceNetworking.sendSimple(SceNetworking.DELETE, row.id());
                     scheduleRefresh();

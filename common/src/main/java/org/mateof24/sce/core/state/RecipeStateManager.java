@@ -124,6 +124,12 @@ public final class RecipeStateManager {
         return raw != null && raw.isJsonObject() ? raw.getAsJsonObject() : null;
     }
 
+    /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
+    public JsonObject editorJson(ResourceLocation id) {
+        JsonObject generated = state().generated().get(id);
+        return generated != null ? generated : rawJson(id);
+    }
+
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */
     public ItemStack resultOf(MinecraftServer server, ResourceLocation id) {
         return server.getRecipeManager().byKey(id)
