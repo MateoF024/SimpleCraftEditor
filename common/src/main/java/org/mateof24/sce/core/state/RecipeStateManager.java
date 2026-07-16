@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Authoritative, server-side coordinator that applies the persisted {@link RecipeState} to the live
@@ -29,8 +31,14 @@ public final class RecipeStateManager {
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
     private List<Recipe<?>> baseSnapshot = List.of();
+    private Consumer<MinecraftServer> changeListener;
 
     private RecipeStateManager() {
+    }
+
+    /** Set by the networking layer so client editor state is re-synced after every mutation. */
+    public void setChangeListener(Consumer<MinecraftServer> listener) {
+        this.changeListener = listener;
     }
 
     public RecipeState state() {
@@ -98,6 +106,31 @@ public final class RecipeStateManager {
         return true;
     }
 
+    /** Stores an authored recipe (create or edit-as-override), rejecting JSON that does not parse. */
+    public boolean saveGenerated(MinecraftServer server, ResourceLocation id, JsonObject json) {
+        try {
+            RecipeManager.fromJson(id, json);
+        } catch (Exception e) {
+            SimpleCraftEditor.LOGGER.warn("Rejected authored recipe '{}': {}", id, e.getMessage());
+            return false;
+        }
+        state().putGenerated(id, json);
+        reapplyAndSync(server, server.getRecipeManager());
+        return true;
+    }
+
+    public JsonObject rawJson(ResourceLocation id) {
+        JsonElement raw = rawJsonCache.get(id);
+        return raw != null && raw.isJsonObject() ? raw.getAsJsonObject() : null;
+    }
+
+    /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */
+    public ItemStack resultOf(MinecraftServer server, ResourceLocation id) {
+        return server.getRecipeManager().byKey(id)
+                .map(recipe -> recipe.getResultItem(server.registryAccess()))
+                .orElse(ItemStack.EMPTY);
+    }
+
     public boolean cloneRecipe(MinecraftServer server, ResourceLocation source, ResourceLocation target) {
         JsonElement raw = rawJsonCache.get(source);
         if (raw == null || !raw.isJsonObject()) {
@@ -124,6 +157,9 @@ public final class RecipeStateManager {
         applyTo(manager);
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(state());
+        if (changeListener != null) {
+            changeListener.accept(server);
+        }
     }
 
     private Recipe<?> parse(ResourceLocation id, JsonObject json) {
