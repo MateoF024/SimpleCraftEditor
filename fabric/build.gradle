@@ -24,12 +24,21 @@ configurations {
     }
 }
 
+// Recipe-viewer (JEI, EMI) and Create APIs we integrate with. Sourced from the local, gitignored
+// libs/ tree (see roadmap). Compile-time only: we never bundle or hard-depend on them, and Create
+// is a soft dependency loaded only when present.
+def integrationLibs = file("${rootProject.projectDir}/libs/v1.20.1/fabric")
+
 dependencies {
     modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:$rootProject.fabric_api_version"
 
     modImplementation "dev.architectury:architectury-fabric:$rootProject.architectury_api_version"
+
+    modCompileOnly fileTree(dir: integrationLibs, include: 'jei-*.jar')
+    modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
+    modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
