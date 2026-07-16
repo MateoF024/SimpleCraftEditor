@@ -10,6 +10,7 @@ dependencies {
     modImplementation "dev.architectury:architectury:$rootProject.architectury_api_version"
 
     // Recipe-viewer APIs for the integration code that lives in common. Compile-time only; the same
-    // mezz.jei.api classes ship in both loader jars, so the Fabric jar is used here as the API source.
+    // mezz.jei.api / dev.emi.emi.api classes ship in both loader jars, so the Fabric jars are used here.
     modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.20.1/fabric", include: 'jei-*.jar')
+    modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.20.1/fabric", include: 'emi-*.jar')
 }

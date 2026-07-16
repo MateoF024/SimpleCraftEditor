@@ -22,6 +22,9 @@
     ],
     "jei_mod_plugin": [
       "org.mateof24.sce.client.jei.SceJeiPlugin"
+    ],
+    "emi": [
+      "org.mateof24.sce.client.emi.SceEmiPlugin"
     ]
   },
   "mixins": [
