@@ -1,5 +1,8 @@
 package org.mateof24.sce;
 
+import dev.architectury.event.events.common.LifecycleEvent;
+import org.mateof24.sce.core.command.SceCommands;
+import org.mateof24.sce.core.state.RecipeStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +14,8 @@ public final class SimpleCraftEditor {
     }
 
     public static void init() {
-        // Common (loader-agnostic) initialization goes here.
+        SceCommands.register();
+        LifecycleEvent.SERVER_STOPPED.register(server -> RecipeStateManager.INSTANCE.onServerStopped());
         LOGGER.info("Initializing Simple Craft Editor common.");
     }
 }
