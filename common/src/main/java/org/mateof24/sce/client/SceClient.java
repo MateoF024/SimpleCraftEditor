@@ -6,14 +6,17 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.architectury.event.events.client.ClientTickEvent;
 import dev.architectury.networking.NetworkManager;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
+import dev.architectury.registry.menu.MenuRegistry;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
+import org.mateof24.sce.client.screen.RecipeEditorScreen;
 import org.mateof24.sce.client.screen.RecipeManagerScreen;
 import org.mateof24.sce.net.SceNetworking;
+import org.mateof24.sce.registry.SceMenus;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +32,7 @@ public final class SceClient {
 
     public static void init() {
         registerReceivers();
+        MenuRegistry.registerScreenFactory(SceMenus.RECIPE_EDITOR.get(), RecipeEditorScreen::new);
         KeyMappingRegistry.register(OPEN_MANAGER);
         ClientTickEvent.CLIENT_POST.register(minecraft -> {
             while (OPEN_MANAGER.consumeClick()) {

@@ -4,17 +4,24 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.architectury.event.events.common.PlayerEvent;
 import dev.architectury.networking.NetworkManager;
+import dev.architectury.registry.menu.ExtendedMenuProvider;
+import dev.architectury.registry.menu.MenuRegistry;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
+import org.jetbrains.annotations.Nullable;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.core.state.RecipeStateManager;
+import org.mateof24.sce.menu.RecipeEditorMenu;
 
 import java.util.Map;
 
@@ -29,6 +36,7 @@ public final class SceNetworking {
     public static final ResourceLocation ENABLE = channel("enable");
     public static final ResourceLocation DELETE = channel("delete");
     public static final ResourceLocation REQUEST_JSON = channel("request_json");
+    public static final ResourceLocation OPEN_EDITOR = channel("open_editor");
     public static final ResourceLocation SYNC = channel("sync");
     public static final ResourceLocation RECIPE_JSON = channel("recipe_json");
 
@@ -74,6 +82,10 @@ public final class SceNetworking {
             ResourceLocation id = buf.readResourceLocation();
             context.queue(() -> handleRequestJson(context.getPlayer(), id));
         });
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, OPEN_EDITOR, (buf, context) -> {
+            String idString = buf.readUtf();
+            context.queue(() -> handleOpenEditor(context.getPlayer(), idString));
+        });
 
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
     }
@@ -105,6 +117,40 @@ public final class SceNetworking {
         buf.writeResourceLocation(id);
         buf.writeUtf(json == null ? "" : json.toString(), MAX_JSON);
         NetworkManager.sendToPlayer(player, RECIPE_JSON, buf);
+    }
+
+    private static void handleOpenEditor(Player sender, String idString) {
+        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+            deny(sender);
+            return;
+        }
+        ResourceLocation editId = idString.isEmpty() ? null : ResourceLocation.tryParse(idString);
+        String editJson = "";
+        if (editId != null) {
+            JsonObject json = RecipeStateManager.INSTANCE.rawJson(editId);
+            if (json != null) {
+                editJson = json.toString();
+            }
+        }
+        MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson));
+    }
+
+    private record EditorMenuProvider(@Nullable ResourceLocation editId, String editJson) implements ExtendedMenuProvider {
+        @Override
+        public void saveExtraData(FriendlyByteBuf buf) {
+            buf.writeUtf(editId == null ? "" : editId.toString());
+            buf.writeUtf(editJson, MAX_JSON);
+        }
+
+        @Override
+        public Component getDisplayName() {
+            return Component.literal("Recipe Editor");
+        }
+
+        @Override
+        public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player player) {
+            return new RecipeEditorMenu(containerId, inventory, editId, editJson);
+        }
     }
 
     private static void ifAllowed(net.minecraft.world.entity.player.Player sender, java.util.function.Consumer<ServerPlayer> action) {
@@ -179,5 +225,12 @@ public final class SceNetworking {
         FriendlyByteBuf buf = buffer();
         buf.writeResourceLocation(recipeId);
         NetworkManager.sendToServer(channel, buf);
+    }
+
+    /** Asks the server to open the editor menu; empty id means a fresh recipe. */
+    public static void sendOpenEditor(String idString) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeUtf(idString);
+        NetworkManager.sendToServer(OPEN_EDITOR, buf);
     }
 }

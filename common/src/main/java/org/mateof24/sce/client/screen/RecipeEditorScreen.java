@@ -6,188 +6,206 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import org.mateof24.sce.client.ClientEditorState;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
+import org.mateof24.sce.menu.RecipeEditorMenu;
 import org.mateof24.sce.net.SceNetworking;
 
 /**
- * Our own recipe editor. Independent of JEI/EMI: it shows the recipe's slots plus the player's inventory
- * so ingredients can be picked straight from it. Left-click an inventory item to hold it, then left-click a
- * recipe slot to place it; right-click a slot to clear it. Tags are applied via the tag field.
- *
- * <p>The whole UI is laid out as a compact, vertically centred panel so nothing overlaps regardless of
- * window size.
+ * Recipe editor built on a real synced container, so the input grid, the output and the player inventory
+ * all behave like a vanilla screen: pick up, place, split, drag, shift-click and hotbar keys work natively,
+ * and items are returned to the player on close. Tags and prefilled (edited) recipes render as ghosts in
+ * empty slots; a physical item in a slot always overrides its ghost.
  */
 @Environment(EnvType.CLIENT)
-public class RecipeEditorScreen extends BaseSceScreen {
-    private static final int SLOT = 18;
+public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
+    private static final RecipeDraft.Kind[] MODE_KIND = {
+            RecipeDraft.Kind.CRAFTING_SHAPELESS, RecipeDraft.Kind.CRAFTING_SHAPED,
+            RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING,
+            RecipeDraft.Kind.STONECUTTING};
+    private static final RecipeDraft.Cooking[] MODE_COOK = {
+            null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
+            RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null};
+    private static final String[] MODE_LABEL = {
+            "Shapeless", "Shaped", "Smelting", "Blasting", "Smoking", "Campfire", "Stonecutting"};
 
-    private RecipeDraft draft;
-    private final ResourceLocation loadId;
-    private boolean requested;
+    private final IngredientValue[] overlay = new IngredientValue[9];
+    private IngredientValue overlayResult = IngredientValue.empty();
+    private int overlayResultCount = 1;
 
-    private ItemStack cursor = ItemStack.EMPTY;
+    private int modeIndex;
     private int selectedInput = -1;
     private String status = "";
+
+    private String idValue;
+    private String tagValue = "";
+    private float pendingExp = 0.1f;
+    private int pendingTime = 200;
 
     private EditBox idBox;
     private EditBox tagBox;
     private EditBox expBox;
     private EditBox timeBox;
 
-    private int topPos;
-    private int gridX;
-    private int gridY;
+    public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
+        super(menu, inventory, title);
+        this.imageWidth = 210;
+        this.imageHeight = 228;
+        this.idValue = menu.editId() != null ? menu.editId().toString() : "sce:new_recipe";
+        initFromBase(menu.baseDraft());
+    }
 
-    private RecipeEditorScreen(RecipeDraft draft, ResourceLocation loadId) {
-        super(Component.literal("Recipe Editor"));
-        this.draft = draft;
-        this.loadId = loadId;
-        if (loadId != null) {
-            this.draft.id = loadId;
+    private void initFromBase(RecipeDraft base) {
+        for (int i = 0; i < 9; i++) {
+            overlay[i] = IngredientValue.empty();
+        }
+        if (base == null) {
+            return;
+        }
+        modeIndex = modeIndexOf(base);
+        overlayResult = base.result;
+        overlayResultCount = base.resultCount;
+        pendingExp = base.experience;
+        pendingTime = base.cookingTime;
+        if (base.kind == RecipeDraft.Kind.CRAFTING_SHAPED) {
+            for (int row = 0; row < base.height && row < 3; row++) {
+                for (int col = 0; col < base.width && col < 3; col++) {
+                    overlay[row * 3 + col] = base.input(row * base.width + col);
+                }
+            }
+        } else if (base.kind == RecipeDraft.Kind.CRAFTING_SHAPELESS) {
+            for (int i = 0; i < base.inputs.size() && i < 9; i++) {
+                overlay[i] = base.input(i);
+            }
+        } else {
+            overlay[0] = base.input(0);
         }
     }
 
-    public static RecipeEditorScreen forNew() {
-        return new RecipeEditorScreen(RecipeDraft.blank(RecipeDraft.Kind.CRAFTING_SHAPELESS), null);
+    private static int modeIndexOf(RecipeDraft base) {
+        for (int i = 0; i < MODE_KIND.length; i++) {
+            if (MODE_KIND[i] == base.kind && (MODE_COOK[i] == null || MODE_COOK[i] == base.cooking)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
-    public static RecipeEditorScreen forExisting(ResourceLocation id) {
-        return new RecipeEditorScreen(RecipeDraft.blank(RecipeDraft.Kind.CRAFTING_SHAPELESS), id);
+    private boolean cooking() {
+        return MODE_KIND[modeIndex] == RecipeDraft.Kind.COOKING;
     }
 
     @Override
     protected void init() {
-        if (loadId != null && !requested) {
-            requested = true;
-            ClientEditorState.requestJson(loadId, json -> onLoaded(loadId, json));
-        }
+        super.init();
 
-        int contentHeight = cooking() ? 254 : 234;
-        topPos = Math.max(8, (height - contentHeight) / 2);
-        gridX = width / 2 - 110;
-        gridY = topPos + 42;
+        addRenderableWidget(Button.builder(Component.literal("Type: " + MODE_LABEL[modeIndex]), b -> {
+            modeIndex = (modeIndex + 1) % MODE_KIND.length;
+            rebuildWidgets();
+        }).bounds(leftPos + 30, topPos + 4, 150, 16).build());
 
-        addRenderableWidget(Button.builder(Component.literal("Type: " + kindLabel()), b -> cycleKind())
-                .bounds(width / 2 - 75, topPos + 4, 150, 16).build());
-
-        idBox = new EditBox(font, width / 2 - 120, topPos + 22, 180, 16, Component.literal("id"));
+        idBox = new EditBox(font, leftPos + 8, topPos + 22, 150, 16, Component.literal("id"));
         idBox.setMaxLength(200);
-        idBox.setValue(draft.id != null ? draft.id.toString() : "sce:new_recipe");
+        idBox.setValue(idValue);
+        idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
-        addRenderableWidget(Button.builder(Component.literal("Load"), b -> loadFromId())
-                .bounds(width / 2 + 64, topPos + 22, 40, 16).build());
 
-        int outX = outputX();
-        addRenderableWidget(Button.builder(Component.literal("-"), b -> adjustCount(-1)).bounds(outX + 22, gridY + SLOT, 16, 16).build());
-        addRenderableWidget(Button.builder(Component.literal("+"), b -> adjustCount(1)).bounds(outX + 60, gridY + SLOT, 16, 16).build());
-
-        tagBox = new EditBox(font, gridX, topPos + 102, 150, 16, Component.literal("tag"));
+        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 104, 16, Component.literal("tag"));
         tagBox.setMaxLength(200);
-        tagBox.setValue("");
+        tagBox.setValue(tagValue);
+        tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
-        addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag()).bounds(gridX + 154, topPos + 102, 56, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag())
+                .bounds(leftPos + 116, topPos + 98, 52, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Clr"), b -> clearSelected())
+                .bounds(leftPos + 170, topPos + 98, 32, 16).build());
 
         if (cooking()) {
-            expBox = new EditBox(font, gridX, topPos + 120, 70, 16, Component.literal("exp"));
-            expBox.setValue(Float.toString(draft.experience));
+            expBox = new EditBox(font, leftPos + 150, topPos + 42, 52, 16, Component.literal("exp"));
+            expBox.setValue(Float.toString(pendingExp));
+            expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
             addRenderableWidget(expBox);
-            timeBox = new EditBox(font, gridX + 90, topPos + 120, 70, 16, Component.literal("time"));
-            timeBox.setValue(Integer.toString(draft.cookingTime));
+            timeBox = new EditBox(font, leftPos + 150, topPos + 64, 52, 16, Component.literal("time"));
+            timeBox.setValue(Integer.toString(pendingTime));
+            timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
         }
 
-        int buttonY = buttonY();
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(width / 2 - 150, buttonY, 96, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(width / 2 - 48, buttonY, 96, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose()).bounds(width / 2 + 54, buttonY, 96, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 64, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 74, topPos + 204, 66, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 142, topPos + 204, 60, 20).build());
     }
 
-    private void onLoaded(ResourceLocation id, JsonObject json) {
-        if (json == null) {
-            status = "No JSON for " + id + " (special or missing recipe).";
-            return;
+    @Override
+    protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
+        if (slotId >= 0 && slotId < RecipeEditorMenu.GRID_SIZE) {
+            selectedInput = slotId;
         }
-        RecipeDraft loaded = RecipeCompiler.fromJson(id, json);
-        if (loaded == null) {
-            status = "Recipe type of " + id + " is not editable yet.";
-            return;
-        }
-        this.draft = loaded;
-        rebuildWidgets();
-    }
-
-    private void loadFromId() {
-        ResourceLocation id = ResourceLocation.tryParse(idBox.getValue());
-        if (id == null) {
-            status = "Invalid recipe id.";
-            return;
-        }
-        ClientEditorState.requestJson(id, json -> onLoaded(id, json));
-    }
-
-    private String kindLabel() {
-        return switch (draft.kind) {
-            case CRAFTING_SHAPELESS -> "Shapeless";
-            case CRAFTING_SHAPED -> "Shaped";
-            case COOKING -> "Cooking (" + draft.cooking.name().toLowerCase() + ")";
-            case STONECUTTING -> "Stonecutting";
-        };
-    }
-
-    private void cycleKind() {
-        RecipeDraft.Kind[] kinds = RecipeDraft.Kind.values();
-        RecipeDraft.Kind next = kinds[(draft.kind.ordinal() + 1) % kinds.length];
-        ResourceLocation keepId = ResourceLocation.tryParse(idBox.getValue());
-        draft = RecipeDraft.blank(next);
-        draft.id = keepId;
-        selectedInput = -1;
-        rebuildWidgets();
-    }
-
-    private void adjustCount(int delta) {
-        draft.resultCount = Mth.clamp(draft.resultCount + delta, 1, 64);
+        super.slotClicked(slot, slotId, mouseButton, type);
     }
 
     private void applyTag() {
         if (selectedInput < 0) {
-            status = "Select an input slot first, then Set Tag.";
+            status = "Click an input slot first.";
             return;
         }
-        ResourceLocation tag = ResourceLocation.tryParse(tagBox.getValue());
+        if (!menu.gridItem(selectedInput).isEmpty()) {
+            status = "Clear the item out of that slot before setting a tag.";
+            return;
+        }
+        ResourceLocation tag = ResourceLocation.tryParse(tagValue);
         if (tag == null) {
             status = "Invalid tag id.";
             return;
         }
-        draft.setInput(selectedInput, IngredientValue.tag(tag));
+        overlay[selectedInput] = IngredientValue.tag(tag);
+    }
+
+    private void clearSelected() {
+        if (selectedInput >= 0) {
+            overlay[selectedInput] = IngredientValue.empty();
+        }
     }
 
     private void save() {
-        ResourceLocation id = ResourceLocation.tryParse(idBox.getValue());
+        ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
             status = "Invalid recipe id.";
             return;
         }
+        RecipeDraft draft = new RecipeDraft();
+        draft.kind = MODE_KIND[modeIndex];
+        draft.cooking = MODE_COOK[modeIndex] != null ? MODE_COOK[modeIndex] : RecipeDraft.Cooking.SMELTING;
         draft.id = id;
+        draft.width = 3;
+        draft.height = 3;
+        draft.inputs.clear();
+        for (int i = 0; i < 9; i++) {
+            draft.inputs.add(resolveInput(i));
+        }
+        draft.result = resolveResult();
+        draft.resultCount = Math.max(1, resolveResultCount());
         if (cooking()) {
-            draft.experience = parseFloat(expBox.getValue(), draft.experience);
-            draft.cookingTime = parseInt(timeBox.getValue(), draft.cookingTime);
+            draft.experience = pendingExp;
+            draft.cookingTime = pendingTime;
         }
         JsonObject json = RecipeCompiler.toJson(draft);
         SceNetworking.sendSave(id, json.toString());
-        status = "Sent recipe " + id + " to the server.";
+        status = "Saved " + id + ".";
     }
 
     private void disable() {
-        ResourceLocation id = ResourceLocation.tryParse(idBox.getValue());
+        ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
             status = "Invalid recipe id.";
             return;
@@ -196,158 +214,93 @@ public class RecipeEditorScreen extends BaseSceScreen {
         status = "Requested disable of " + id + ".";
     }
 
-    // ------------------------------------------------------------------ layout helpers
-
-    private boolean cooking() {
-        return draft.kind == RecipeDraft.Kind.COOKING;
+    private IngredientValue resolveInput(int index) {
+        ItemStack real = menu.gridItem(index);
+        if (!real.isEmpty()) {
+            return IngredientValue.item(BuiltInRegistries.ITEM.getKey(real.getItem()));
+        }
+        return overlay[index] != null ? overlay[index] : IngredientValue.empty();
     }
 
-    private boolean singleInput() {
-        return draft.kind == RecipeDraft.Kind.COOKING || draft.kind == RecipeDraft.Kind.STONECUTTING;
+    private IngredientValue resolveResult() {
+        ItemStack real = menu.outputItem();
+        if (!real.isEmpty()) {
+            return IngredientValue.item(BuiltInRegistries.ITEM.getKey(real.getItem()));
+        }
+        return overlayResult;
     }
 
-    private int inputSlotCount() {
-        return singleInput() ? 1 : 9;
+    private int resolveResultCount() {
+        ItemStack real = menu.outputItem();
+        return real.isEmpty() ? overlayResultCount : real.getCount();
     }
 
-    private int inputSlotX(int index) {
-        return singleInput() ? gridX : gridX + (index % 3) * SLOT;
-    }
-
-    private int inputSlotY(int index) {
-        return singleInput() ? gridY + SLOT : gridY + (index / 3) * SLOT;
-    }
-
-    private int outputX() {
-        return gridX + 3 * SLOT + 22;
-    }
-
-    private int outputY() {
-        return gridY + SLOT;
-    }
-
-    private int invX() {
-        return width / 2 - (9 * SLOT) / 2;
-    }
-
-    private int invTop() {
-        return topPos + (cooking() ? 152 : 132);
-    }
-
-    private int buttonY() {
-        return invTop() + 4 * SLOT + 6;
-    }
-
-    // ------------------------------------------------------------------ input
+    // ------------------------------------------------------------------ rendering
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        for (int i = 0; i < inputSlotCount(); i++) {
-            if (isOverSlot(mouseX, mouseY, inputSlotX(i), inputSlotY(i))) {
-                selectedInput = i;
-                if (button == 1) {
-                    draft.setInput(i, IngredientValue.empty());
-                } else {
-                    draft.setInput(i, cursor.isEmpty() ? IngredientValue.empty() : IngredientValue.item(idOf(cursor)));
-                }
-                return true;
-            }
+    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, 0xD0101010);
+        graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + 1, 0xFF000000);
+        graphics.fill(leftPos, topPos + imageHeight - 1, leftPos + imageWidth, topPos + imageHeight, 0xFF000000);
+
+        for (Slot slot : menu.slots) {
+            drawSlot(graphics, leftPos + slot.x, topPos + slot.y);
         }
-        if (isOverSlot(mouseX, mouseY, outputX(), outputY())) {
-            if (button == 1) {
-                draft.result = IngredientValue.empty();
-            } else if (!cursor.isEmpty()) {
-                draft.result = IngredientValue.item(idOf(cursor));
+        for (int i = 0; i < 9; i++) {
+            if (menu.gridItem(i).isEmpty()) {
+                drawGhost(graphics, overlay[i], leftPos + 34 + (i % 3) * 18, topPos + 42 + (i / 3) * 18, 0);
             }
-            return true;
-        }
-        for (int i = 0; i < 36; i++) {
-            int x = invX() + (i % 9) * SLOT;
-            int y = invTop() + (i / 9) * SLOT;
-            if (isOverSlot(mouseX, mouseY, x, y)) {
-                ItemStack stack = minecraft.player.getInventory().getItem(i);
-                cursor = stack.isEmpty() ? ItemStack.EMPTY : stack.copy();
-                return true;
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    private static ResourceLocation idOf(ItemStack stack) {
-        return BuiltInRegistries.ITEM.getKey(stack.getItem());
-    }
-
-    // ------------------------------------------------------------------ render
-
-    @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
-        super.render(graphics, mouseX, mouseY, partialTick);
-
-        for (int i = 0; i < inputSlotCount(); i++) {
-            int x = inputSlotX(i);
-            int y = inputSlotY(i);
-            drawSlot(graphics, x, y);
             if (i == selectedInput) {
-                graphics.fill(x - 1, y - 1, x + 17, y + 17, 0x60FFFFFF);
-            }
-            drawIngredient(graphics, draft.input(i), x, y);
-        }
-
-        drawSlot(graphics, outputX(), outputY());
-        drawResult(graphics, outputX(), outputY());
-        graphics.drawString(font, "->", outputX() - 14, outputY() + 4, 0xFFFFFF);
-        graphics.drawString(font, "x" + draft.resultCount, outputX() + 42, gridY + SLOT + 4, 0xFFFFFF);
-
-        graphics.drawString(font, "Inventory (click to hold):", invX(), invTop() - 11, 0xA0A0A0);
-        for (int i = 0; i < 36; i++) {
-            int x = invX() + (i % 9) * SLOT;
-            int y = invTop() + (i / 9) * SLOT;
-            drawSlot(graphics, x, y);
-            ItemStack stack = minecraft.player.getInventory().getItem(i);
-            if (!stack.isEmpty()) {
-                graphics.renderItem(stack, x, y);
-                graphics.renderItemDecorations(font, stack, x, y);
+                int x = leftPos + 34 + (i % 3) * 18;
+                int y = topPos + 42 + (i / 3) * 18;
+                graphics.fill(x, y, x + 16, y + 16, 0x40FFFFFF);
             }
         }
-
-        if (!status.isEmpty()) {
-            int statusY = Math.min(buttonY() + 26, height - 10);
-            graphics.drawCenteredString(font, status, width / 2, statusY, 0xE0E070);
+        if (menu.outputItem().isEmpty()) {
+            drawGhost(graphics, overlayResult, leftPos + 128, topPos + 60, overlayResultCount);
         }
-
-        if (!cursor.isEmpty()) {
-            graphics.renderItem(cursor, mouseX - 8, mouseY - 8);
-        }
+        graphics.drawString(font, "->", leftPos + 110, topPos + 64, 0xFFFFFF, false);
     }
 
-    private void drawIngredient(GuiGraphics graphics, IngredientValue value, int x, int y) {
+    private void drawSlot(GuiGraphics graphics, int x, int y) {
+        graphics.fill(x - 1, y - 1, x + 17, y + 17, 0xFF8B8B8B);
+        graphics.fill(x, y, x + 16, y + 16, 0xFF373737);
+    }
+
+    private void drawGhost(GuiGraphics graphics, IngredientValue value, int x, int y, int count) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
         ItemStack stack = stackFor(value);
         if (!stack.isEmpty()) {
             graphics.renderItem(stack, x, y);
+            graphics.fill(x, y, x + 16, y + 16, 0x66101010);
+            if (count > 1) {
+                graphics.drawString(font, Integer.toString(count), x + 11, y + 9, 0xC0C0C0, true);
+            }
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
-            graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55);
-        }
-    }
-
-    private void drawResult(GuiGraphics graphics, int x, int y) {
-        ItemStack stack = stackFor(draft.result);
-        if (!stack.isEmpty()) {
-            stack.setCount(Math.max(1, draft.resultCount));
-            graphics.renderItem(stack, x, y);
-            graphics.renderItemDecorations(font, stack, x, y);
+            graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55, false);
         }
     }
 
     private static ItemStack stackFor(IngredientValue value) {
-        if (value.isEmpty()) {
-            return ItemStack.EMPTY;
-        }
         if (value.kind() == IngredientValue.Kind.TAG) {
             return new ItemStack(Items.NAME_TAG);
         }
         return new ItemStack(BuiltInRegistries.ITEM.get(value.id()));
+    }
+
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.drawString(font, "tag:", 8, 88, 0xA0A0A0, false);
+        if (cooking()) {
+            graphics.drawString(font, "xp", 134, 46, 0xA0A0A0, false);
+            graphics.drawString(font, "time", 128, 68, 0xA0A0A0, false);
+        }
+        if (!status.isEmpty()) {
+            graphics.drawString(font, status, 8, imageHeight - 10, 0xE0E070, false);
+        }
     }
 
     private static float parseFloat(String text, float fallback) {
@@ -364,10 +317,5 @@ public class RecipeEditorScreen extends BaseSceScreen {
         } catch (NumberFormatException e) {
             return fallback;
         }
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
     }
 }
