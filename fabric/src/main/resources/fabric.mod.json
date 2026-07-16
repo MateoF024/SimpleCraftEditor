@@ -19,6 +19,9 @@
     ],
     "client": [
       "org.mateof24.sce.fabric.client.SimpleCraftEditorFabricClient"
+    ],
+    "jei_mod_plugin": [
+      "org.mateof24.sce.client.jei.SceJeiPlugin"
     ]
   },
   "mixins": [

@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -238,6 +239,36 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private int resolveResultCount() {
         ItemStack real = menu.outputItem();
         return real.isEmpty() ? overlayResultCount : real.getCount();
+    }
+
+    // ------------------------------------------------------------------ JEI ghost-drag hooks
+
+    public int inputSlotCount() {
+        return inputCount;
+    }
+
+    public Rect2i inputSlotArea(int index) {
+        Slot slot = menu.inputSlot(index);
+        return new Rect2i(leftPos + slot.x, topPos + slot.y, 16, 16);
+    }
+
+    public Rect2i outputSlotArea() {
+        Slot slot = menu.outputSlot();
+        return new Rect2i(leftPos + slot.x, topPos + slot.y, 16, 16);
+    }
+
+    /** Set a recipe input from a JEI-dragged item (as a ghost; a physical item still overrides it). */
+    public void setGhostInput(int index, ItemStack stack) {
+        if (index >= 0 && index < inputCount && !stack.isEmpty()) {
+            overlay[index] = IngredientValue.item(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+        }
+    }
+
+    public void setGhostOutput(ItemStack stack) {
+        if (!stack.isEmpty()) {
+            overlayResult = IngredientValue.item(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+            overlayResultCount = Math.max(1, stack.getCount());
+        }
     }
 
     // ------------------------------------------------------------------ rendering
