@@ -17,8 +17,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.List;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
@@ -282,11 +280,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
         ItemStack stack = stackFor(value);
         if (!stack.isEmpty()) {
+            stack.setCount(Math.max(1, count));
             graphics.renderItem(stack, x, y);
-            graphics.fill(x, y, x + 16, y + 16, 0x66101010);
-            if (count > 1) {
-                graphics.drawString(font, Integer.toString(count), x + 11, y + 9, 0xC0C0C0, true);
-            }
+            graphics.renderItemDecorations(font, stack, x, y);
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
             graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55, false);
@@ -301,24 +297,25 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderRecipeTooltip(graphics, mouseX, mouseY);
-    }
-
-    /** Tooltips for the recipe slots' ghost items and tags (real items get their native tooltip from super). */
-    private void renderRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+    protected void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!menu.getCarried().isEmpty()) {
             return;
         }
+        // Any real item (recipe slots or the player inventory) gets the normal item tooltip.
+        if (hoveredSlot != null && hoveredSlot.hasItem()) {
+            ItemStack stack = hoveredSlot.getItem();
+            graphics.renderTooltip(font, getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);
+            return;
+        }
+        // Ghost ingredients (prefilled or tags) show the same tooltip a real item would.
         for (int i = 0; i < inputCount; i++) {
             if (menu.gridItem(i).isEmpty() && isOverSlot(menu.inputSlot(i), mouseX, mouseY)) {
-                showGhostTooltip(graphics, overlay[i], mouseX, mouseY);
+                ghostTooltip(graphics, overlay[i], mouseX, mouseY);
                 return;
             }
         }
         if (menu.outputItem().isEmpty() && isOverSlot(menu.outputSlot(), mouseX, mouseY)) {
-            showGhostTooltip(graphics, overlayResult, mouseX, mouseY);
+            ghostTooltip(graphics, overlayResult, mouseX, mouseY);
         }
     }
 
@@ -328,18 +325,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         return mouseX >= x && mouseX < x + 16 && mouseY >= y && mouseY < y + 16;
     }
 
-    private void showGhostTooltip(GuiGraphics graphics, IngredientValue value, int mouseX, int mouseY) {
+    private void ghostTooltip(GuiGraphics graphics, IngredientValue value, int mouseX, int mouseY) {
         if (value == null || value.isEmpty()) {
             return;
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
-            graphics.renderComponentTooltip(font, List.<Component>of(
-                    Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN),
-                    Component.literal("Tag ingredient").withStyle(ChatFormatting.GRAY)), mouseX, mouseY);
+            graphics.renderTooltip(font, Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN), mouseX, mouseY);
         } else {
-            graphics.renderComponentTooltip(font, List.<Component>of(
-                    stackFor(value).getHoverName(),
-                    Component.literal("Ghost — click to place a real item").withStyle(ChatFormatting.DARK_GRAY)), mouseX, mouseY);
+            ItemStack stack = stackFor(value);
+            graphics.renderTooltip(font, getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);
         }
     }
 
