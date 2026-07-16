@@ -297,7 +297,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     @Override
-    protected void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        // Render tooltips ourselves: with this custom layout the container screen doesn't draw them.
         if (!menu.getCarried().isEmpty()) {
             return;
         }
