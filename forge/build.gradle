@@ -44,10 +44,11 @@ dependencies {
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
-    // Load JEI and EMI in the dev client so their integrations can be exercised. Not shipped as deps.
-    // With both present EMI is the active viewer and runs JEI beneath it, matching a real install.
+    // Load JEI in the dev client so its integration can be exercised. Not shipped as a dependency.
+    // EMI is intentionally not loaded in the Forge dev client: Loom does not remap EMI's mixins for a
+    // file-dependency here, so its AbstractInventoryScreenMixin crashes on launch. EMI is tested on the
+    // Fabric dev client (where it is native) and works normally in a production Forge install.
     modLocalRuntime fileTree(dir: integrationLibs, include: 'jei-*.jar')
-    modLocalRuntime fileTree(dir: integrationLibs, include: 'emi-*.jar')
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionForge')
