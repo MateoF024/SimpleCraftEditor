@@ -38,7 +38,7 @@ import org.mateof24.sce.net.SceNetworking;
 @Environment(EnvType.CLIENT)
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
     private static final String[] HEAT_NAMES = {"none", "heated", "superheated"};
-    private static final String[] HEAT_LABELS = {"Heat: None", "Heat: Heated", "Heat: Superheated"};
+    private static final String[] HEAT_LABELS = {"Heat: None", "Heat: Heated", "Heat: Super"};
 
     private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
     private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
@@ -162,6 +162,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.literal("tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tagValue);
+        tagBox.setHint(Component.literal("tag id"));
         tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
         addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag())
@@ -181,7 +182,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (create) {
-            chanceBox = new EditBox(font, leftPos + 188, topPos + 42, 46, 16, Component.literal("chance"));
+            // Create's grid is only two rows tall, so its extra controls sit in the free row below it.
+            chanceBox = new EditBox(font, leftPos + 52, topPos + 80, 36, 16, Component.literal("chance"));
             chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
             chanceBox.setResponder(s -> {
                 if (selectedOutput >= 0) {
@@ -189,7 +191,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             });
             addRenderableWidget(chanceBox);
-            timeBox = new EditBox(font, leftPos + 188, topPos + 66, 46, 16, Component.literal("time"));
+            timeBox = new EditBox(font, leftPos + 124, topPos + 80, 36, 16, Component.literal("time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
@@ -197,7 +199,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 addRenderableWidget(Button.builder(Component.literal(HEAT_LABELS[heatIndex]), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
                     rebuildWidgets();
-                }).bounds(leftPos + 8, topPos + 88, 120, 16).build());
+                }).bounds(leftPos + 164, topPos + 80, 68, 16).build());
             }
         }
 
@@ -471,14 +473,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, "tag:", 8, 88, 0x404040, false);
         if (RecipeModes.isCooking(mode)) {
             graphics.drawString(font, "xp", 174, 46, 0x404040, false);
             graphics.drawString(font, "time", 166, 70, 0x404040, false);
         }
         if (create) {
-            graphics.drawString(font, "chance", 188, 34, 0x404040, false);
-            graphics.drawString(font, "time", 188, 58, 0x404040, false);
+            graphics.drawString(font, "chance", 8, 84, 0x404040, false);
+            graphics.drawString(font, "time", 96, 84, 0x404040, false);
         }
         if (!status.isEmpty()) {
             graphics.drawCenteredString(font, status, imageWidth / 2, imageHeight + 4, 0xE0E070);
