@@ -27,6 +27,7 @@ public final class RecipeCompiler {
             case CRAFTING_SHAPED -> shaped(draft);
             case COOKING -> cooking(draft);
             case STONECUTTING -> stonecutting(draft);
+            case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
         };
     }
 
@@ -136,7 +137,7 @@ public final class RecipeCompiler {
             case "minecraft:smelting", "minecraft:blasting", "minecraft:smoking", "minecraft:campfire_cooking" ->
                     fromCooking(json, type);
             case "minecraft:stonecutting" -> fromStonecutting(json);
-            default -> null;
+            default -> type.startsWith("create:") ? CreateRecipeCompiler.fromJson(id, json) : null;
         };
         if (draft != null) {
             draft.id = id;

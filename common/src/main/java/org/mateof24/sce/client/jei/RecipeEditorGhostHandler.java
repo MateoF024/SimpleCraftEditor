@@ -38,18 +38,21 @@ public class RecipeEditorGhostHandler implements IGhostIngredientHandler<RecipeE
                 }
             });
         }
-        Rect2i outputArea = screen.outputSlotArea();
-        targets.add(new Target<>() {
-            @Override
-            public Rect2i getArea() {
-                return outputArea;
-            }
+        for (int i = 0; i < screen.outputSlotCount(); i++) {
+            int index = i;
+            Rect2i area = screen.outputSlotArea(i);
+            targets.add(new Target<>() {
+                @Override
+                public Rect2i getArea() {
+                    return area;
+                }
 
-            @Override
-            public void accept(I ignored) {
-                screen.setGhostOutput(stack);
-            }
-        });
+                @Override
+                public void accept(I ignored) {
+                    screen.setGhostOutput(index, stack);
+                }
+            });
+        }
         return targets;
     }
 

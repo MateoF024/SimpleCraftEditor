@@ -27,9 +27,11 @@ public class RecipeEditorEmiDragHandler implements EmiDragDropHandler<RecipeEdit
                 return true;
             }
         }
-        if (contains(screen.outputSlotArea(), mouseX, mouseY)) {
-            screen.setGhostOutput(stack);
-            return true;
+        for (int i = 0; i < screen.outputSlotCount(); i++) {
+            if (contains(screen.outputSlotArea(i), mouseX, mouseY)) {
+                screen.setGhostOutput(i, stack);
+                return true;
+            }
         }
         return false;
     }
@@ -42,7 +44,9 @@ public class RecipeEditorEmiDragHandler implements EmiDragDropHandler<RecipeEdit
         for (int i = 0; i < screen.inputSlotCount(); i++) {
             highlight(graphics, screen.inputSlotArea(i));
         }
-        highlight(graphics, screen.outputSlotArea());
+        for (int i = 0; i < screen.outputSlotCount(); i++) {
+            highlight(graphics, screen.outputSlotArea(i));
+        }
     }
 
     private static void highlight(GuiGraphics graphics, Rect2i area) {

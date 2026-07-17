@@ -18,20 +18,20 @@ import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.registry.SceMenus;
 
 /**
- * Synced container for the recipe editor. The input slots and the output are backed by temporary
- * containers, so items placed there behave exactly like a crafting table (real cursor interaction,
- * splitting, dragging, hotbar swaps, shift-click) and are returned to the player when the screen closes.
- * The player inventory slots are the real inventory. The slot layout depends on the recipe type: a 3x3
- * grid for crafting, a single input for cooking/stonecutting. Tag ingredients and prefilled recipes are
- * drawn as ghosts client-side; they are never physical items, so they never dupe.
+ * Synced container for the recipe editor. Input and output slots are backed by temporary containers, so
+ * items placed there behave exactly like a crafting table (real cursor interaction, splitting, dragging,
+ * hotbar swaps, shift-click) and are returned to the player when the screen closes. The player inventory
+ * slots are the real inventory. The slot layout depends on the recipe type: a 3x3 grid for crafting, a
+ * single input for cooking/stonecutting, and a 2x3 input block with a column of outputs for Create.
  */
 public class RecipeEditorMenu extends AbstractContainerMenu {
     private final Container grid = new SimpleContainer(9);
-    private final Container output = new SimpleContainer(1);
+    private final Container output = new SimpleContainer(4);
 
     private final ResourceLocation editId;
     private final int mode;
     private final int inputCount;
+    private final int outputCount;
     @Nullable
     private final RecipeDraft baseDraft;
 
@@ -47,15 +47,19 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         this.mode = RecipeModes.clamp(mode);
         this.baseDraft = parseDraft(editId, editJson);
         this.inputCount = RecipeModes.inputCount(this.mode);
+        this.outputCount = RecipeModes.outputCount(this.mode);
 
-        if (RecipeModes.isCrafting(this.mode)) {
-            for (int i = 0; i < 9; i++) {
-                addSlot(new Slot(grid, i, 44 + (i % 3) * 18, 42 + (i / 3) * 18));
-            }
-            addSlot(new Slot(output, 0, 150, 60));
-        } else {
-            addSlot(new Slot(grid, 0, 60, 58));
-            addSlot(new Slot(output, 0, 140, 58));
+        boolean create = RecipeModes.isCreate(this.mode);
+        boolean single = !RecipeModes.isCrafting(this.mode) && !create;
+        for (int i = 0; i < inputCount; i++) {
+            int x = single ? 60 : 44 + (i % 3) * 18;
+            int y = single ? 58 : 42 + (i / 3) * 18;
+            addSlot(new Slot(grid, i, x, y));
+        }
+        for (int i = 0; i < outputCount; i++) {
+            int x = single ? 140 : (create ? 150 + (i % 2) * 18 : 150);
+            int y = single ? 58 : (create ? 42 + (i / 2) * 18 : 60);
+            addSlot(new Slot(output, i, x, y));
         }
 
         for (int row = 0; row < 3; row++) {
@@ -76,6 +80,10 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         return inputCount;
     }
 
+    public int outputCount() {
+        return outputCount;
+    }
+
     @Nullable
     public ResourceLocation editId() {
         return editId;
@@ -86,27 +94,27 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         return baseDraft;
     }
 
-    /** Screen-relative position of an input slot. */
     public Slot inputSlot(int index) {
         return slots.get(index);
     }
 
-    public Slot outputSlot() {
-        return slots.get(inputCount);
+    public Slot outputSlot(int index) {
+        return slots.get(inputCount + index);
     }
 
     public ItemStack gridItem(int index) {
         return grid.getItem(index);
     }
 
-    public ItemStack outputItem() {
-        return output.getItem(0);
+    public ItemStack outputItem(int index) {
+        return output.getItem(index);
     }
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        int invStart = inputCount + 1;
-        int invEnd = invStart + 36;
+        int slotsUsed = inputCount + outputCount;
+        int invStart = slotsUsed;
+        int invEnd = slotsUsed + 36;
         ItemStack result = ItemStack.EMPTY;
         Slot slot = slots.get(index);
         if (slot != null && slot.hasItem()) {
@@ -116,7 +124,7 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
                 if (!moveItemStackTo(stack, invStart, invEnd, true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!moveItemStackTo(stack, 0, inputCount + 1, false)) {
+            } else if (!moveItemStackTo(stack, 0, slotsUsed, false)) {
                 return ItemStack.EMPTY;
             }
             if (stack.isEmpty()) {

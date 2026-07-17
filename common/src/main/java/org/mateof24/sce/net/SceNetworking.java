@@ -140,6 +140,7 @@ public final class SceNetworking {
                 }
             }
         }
+        mode = RecipeModes.sanitize(mode);
         MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson, mode));
     }
 

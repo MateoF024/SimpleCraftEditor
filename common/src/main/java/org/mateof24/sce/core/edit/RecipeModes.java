@@ -1,21 +1,42 @@
 package org.mateof24.sce.core.edit;
 
+import dev.architectury.platform.Platform;
+
 /**
  * The selectable recipe types in the editor and the slot layout each one uses. Shared by the menu (which
  * builds the right slots server-side) and the screen (which labels the type button and compiles the draft).
+ * Create processing types are only offered when Create is installed.
  */
 public final class RecipeModes {
-    public static final int COUNT = 7;
-
     private static final RecipeDraft.Kind[] KIND = {
             RecipeDraft.Kind.CRAFTING_SHAPELESS, RecipeDraft.Kind.CRAFTING_SHAPED,
             RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING,
-            RecipeDraft.Kind.STONECUTTING};
+            RecipeDraft.Kind.STONECUTTING,
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.CREATE_PROCESSING};
     private static final RecipeDraft.Cooking[] COOK = {
             null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
-            RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null};
+            RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null,
+            null, null, null, null, null, null, null, null, null, null};
+    private static final String[] CREATE_TYPE = {
+            null, null, null, null, null, null, null,
+            "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
+            "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying"};
     private static final String[] LABEL = {
-            "Shapeless", "Shaped", "Smelting", "Blasting", "Smoking", "Campfire", "Stonecutting"};
+            "Shapeless", "Shaped", "Smelting", "Blasting", "Smoking", "Campfire", "Stonecutting",
+            "Create: Mixing", "Create: Crushing", "Create: Milling", "Create: Pressing", "Create: Compacting",
+            "Create: Cutting", "Create: Splashing", "Create: Haunting", "Create: Sandpaper", "Create: Deploying"};
+    private static final int[] INPUTS = {
+            9, 9, 1, 1, 1, 1, 1,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+    private static final int[] OUTPUTS = {
+            1, 1, 1, 1, 1, 1, 1,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4};
+
+    public static final int COUNT = KIND.length;
+    private static final int FIRST_CREATE = 7;
 
     private RecipeModes() {
     }
@@ -33,6 +54,10 @@ public final class RecipeModes {
         return LABEL[clamp(mode)];
     }
 
+    public static String createType(int mode) {
+        return CREATE_TYPE[clamp(mode)];
+    }
+
     public static boolean isCrafting(int mode) {
         RecipeDraft.Kind kind = KIND[clamp(mode)];
         return kind == RecipeDraft.Kind.CRAFTING_SHAPED || kind == RecipeDraft.Kind.CRAFTING_SHAPELESS;
@@ -42,17 +67,60 @@ public final class RecipeModes {
         return KIND[clamp(mode)] == RecipeDraft.Kind.COOKING;
     }
 
+    public static boolean isCreate(int mode) {
+        return KIND[clamp(mode)] == RecipeDraft.Kind.CREATE_PROCESSING;
+    }
+
     public static int inputCount(int mode) {
-        return isCrafting(mode) ? 9 : 1;
+        return INPUTS[clamp(mode)];
+    }
+
+    public static int outputCount(int mode) {
+        return OUTPUTS[clamp(mode)];
     }
 
     public static int clamp(int mode) {
         return ((mode % COUNT) + COUNT) % COUNT;
     }
 
+    public static boolean createLoaded() {
+        return Platform.isModLoaded("create");
+    }
+
+    /** Whether a mode can be used right now (Create modes require Create to be installed). */
+    public static boolean available(int mode) {
+        return clamp(mode) < FIRST_CREATE || createLoaded();
+    }
+
+    /** Next selectable mode, skipping Create types when Create is absent. */
+    public static int nextAvailable(int mode) {
+        int next = clamp(mode);
+        for (int i = 0; i < COUNT; i++) {
+            next = clamp(next + 1);
+            if (available(next)) {
+                return next;
+            }
+        }
+        return 0;
+    }
+
+    /** Force a mode into the available range (used server-side when a client asks for an unavailable one). */
+    public static int sanitize(int mode) {
+        int clamped = clamp(mode);
+        return available(clamped) ? clamped : 0;
+    }
+
     /** Maps a parsed recipe back to the matching editor mode (0 if unknown). */
     public static int indexOf(RecipeDraft draft) {
-        for (int i = 0; i < COUNT; i++) {
+        if (draft.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
+            for (int i = FIRST_CREATE; i < COUNT; i++) {
+                if (CREATE_TYPE[i].equals(draft.createType)) {
+                    return i;
+                }
+            }
+            return FIRST_CREATE;
+        }
+        for (int i = 0; i < FIRST_CREATE; i++) {
             if (KIND[i] == draft.kind && (COOK[i] == null || COOK[i] == draft.cooking)) {
                 return i;
             }

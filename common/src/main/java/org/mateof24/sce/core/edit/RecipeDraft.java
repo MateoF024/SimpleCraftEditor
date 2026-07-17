@@ -11,7 +11,20 @@ import java.util.List;
  * phase are modelled; richer/modded recipes come through adapters and typed editors in later phases.
  */
 public final class RecipeDraft {
-    public enum Kind {CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING}
+    public enum Kind {CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING}
+
+    /** One item output of a Create processing recipe: an item, a count and a drop chance (0..1). */
+    public static final class ResultEntry {
+        public IngredientValue item;
+        public int count;
+        public float chance;
+
+        public ResultEntry(IngredientValue item, int count, float chance) {
+            this.item = item;
+            this.count = count;
+            this.chance = chance;
+        }
+    }
 
     /** Cooking sub-type with its recipe-type id and the vanilla default cooking time. */
     public enum Cooking {
@@ -45,6 +58,12 @@ public final class RecipeDraft {
     public float experience = 0.1f;
     public int cookingTime = 200;
 
+    // Create processing
+    public String createType = "";
+    public int processingTime = 0;
+    public String heat = "none";
+    public final List<ResultEntry> results = new ArrayList<>();
+
     public RecipeDraft() {
     }
 
@@ -56,6 +75,7 @@ public final class RecipeDraft {
             case CRAFTING_SHAPED -> draft.width * draft.height;
             case CRAFTING_SHAPELESS -> 9;
             case COOKING, STONECUTTING -> 1;
+            case CREATE_PROCESSING -> 6;
         };
         for (int i = 0; i < slots; i++) {
             draft.inputs.add(IngredientValue.empty());
