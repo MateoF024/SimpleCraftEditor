@@ -44,6 +44,7 @@ public final class SceNetworking {
     public static final ResourceLocation SYNC = channel("sync");
     public static final ResourceLocation RECIPE_JSON = channel("recipe_json");
     public static final ResourceLocation OPEN_RAW = channel("open_raw");
+    public static final ResourceLocation SAVE_RESULT = channel("save_result");
 
     private static final int MAX_JSON = 1024 * 1024;
 
@@ -111,12 +112,21 @@ public final class SceNetworking {
             parsed = JsonParser.parseString(json).getAsJsonObject();
         } catch (Exception e) {
             player.sendSystemMessage(Component.literal("[SCE] Could not parse recipe JSON."));
+            sendSaveResult(player, id, false);
             return;
         }
         boolean ok = RecipeStateManager.INSTANCE.saveGenerated(player.getServer(), id, parsed);
         player.sendSystemMessage(Component.literal(ok
                 ? "[SCE] Saved recipe " + id
                 : "[SCE] Recipe " + id + " was rejected (invalid definition)."));
+        sendSaveResult(player, id, ok);
+    }
+
+    private static void sendSaveResult(ServerPlayer player, ResourceLocation id, boolean ok) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeResourceLocation(id);
+        buf.writeBoolean(ok);
+        NetworkManager.sendToPlayer(player, SAVE_RESULT, buf);
     }
 
     private static void handleRequestJson(net.minecraft.world.entity.player.Player sender, ResourceLocation id) {

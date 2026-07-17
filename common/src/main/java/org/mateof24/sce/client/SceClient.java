@@ -60,7 +60,7 @@ public final class SceClient {
         if (recipeId == null) {
             if (minecraft.player != null) {
                 minecraft.player.displayClientMessage(
-                        Component.literal("[SCE] No recipe found for " + hovered.getHoverName().getString()), true);
+                        Component.literal("[SCE] No recipe found for " + hovered.getHoverName().getString()), false);
             }
             return true;
         }
@@ -128,6 +128,15 @@ public final class SceClient {
             ResourceLocation id = buf.readResourceLocation();
             String json = buf.readUtf(1024 * 1024);
             context.queue(() -> Minecraft.getInstance().setScreen(new RawRecipeScreen(id, json)));
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.SAVE_RESULT, (buf, context) -> {
+            ResourceLocation id = buf.readResourceLocation();
+            boolean ok = buf.readBoolean();
+            context.queue(() -> {
+                if (Minecraft.getInstance().screen instanceof RecipeEditorScreen editor) {
+                    editor.onSaveResult(id, ok);
+                }
+            });
         });
     }
 

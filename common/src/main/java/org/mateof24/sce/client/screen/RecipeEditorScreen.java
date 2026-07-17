@@ -321,7 +321,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return;
         }
         SceNetworking.sendSave(id, RecipeCompiler.toJson(buildDraft(id)).toString());
-        status = "Saved " + id + ".";
+        status = "Saving " + id + "…";
+    }
+
+    /** Called from the network layer with the server's verdict on a save request. */
+    public void onSaveResult(ResourceLocation id, boolean ok) {
+        status = ok ? "Saved " + id + "." : "Could not save " + id + " — invalid recipe.";
     }
 
     /** Opens the raw-JSON view for this recipe: the server's stored JSON if any, else the current draft. */
@@ -436,7 +441,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             }
         }
         Slot firstOut = menu.outputSlot(0);
-        graphics.blit(ARROW_TEXTURE, leftPos + firstOut.x - 26, topPos + firstOut.y + 1, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
+        int inputRight = 0;
+        for (int i = 0; i < inputCount; i++) {
+            inputRight = Math.max(inputRight, menu.inputSlot(i).x + 16);
+        }
+        int arrowX = leftPos + (inputRight + firstOut.x) / 2 - 11;
+        int outBottom = menu.outputSlot(outputCount - 1).y + 16;
+        int arrowY = topPos + (firstOut.y + outBottom) / 2 - 8;
+        graphics.blit(ARROW_TEXTURE, arrowX, arrowY, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
