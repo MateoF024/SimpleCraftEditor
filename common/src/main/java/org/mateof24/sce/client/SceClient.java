@@ -47,8 +47,8 @@ public final class SceClient {
 
     private static void registerReceivers() {
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.SYNC, (buf, context) -> {
-            List<ClientEditorState.Entry> disabled = readEntries(buf, true);
-            List<ClientEditorState.Entry> generated = readEntries(buf, false);
+            List<ClientEditorState.Entry> disabled = readEntries(buf);
+            List<ClientEditorState.Entry> generated = readEntries(buf);
             context.queue(() -> {
                 ClientEditorState.setDisabled(disabled);
                 ClientEditorState.setGenerated(generated);
@@ -67,14 +67,14 @@ public final class SceClient {
         });
     }
 
-    private static List<ClientEditorState.Entry> readEntries(net.minecraft.network.FriendlyByteBuf buf, boolean withBroken) {
+    private static List<ClientEditorState.Entry> readEntries(net.minecraft.network.FriendlyByteBuf buf) {
         int count = buf.readVarInt();
         List<ClientEditorState.Entry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             ResourceLocation id = buf.readResourceLocation();
             ItemStack display = buf.readItem();
-            boolean broken = withBroken && buf.readBoolean();
-            entries.add(new ClientEditorState.Entry(id, display, broken));
+            boolean flag = buf.readBoolean();
+            entries.add(new ClientEditorState.Entry(id, display, flag));
         }
         return entries;
     }

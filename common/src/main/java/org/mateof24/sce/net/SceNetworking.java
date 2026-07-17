@@ -219,6 +219,7 @@ public final class SceNetworking {
         for (ResourceLocation id : generated) {
             buf.writeResourceLocation(id);
             buf.writeItem(manager.resultOf(server, id));
+            buf.writeBoolean(manager.wasBaseRecipe(id)); // true = edit of an existing recipe, false = brand new
         }
 
         NetworkManager.sendToPlayer(player, SYNC, buf);

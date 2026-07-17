@@ -28,7 +28,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
     private int scroll;
     private int lastStateSize = -1;
 
-    private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean broken) {
+    private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean flag) {
     }
 
     public RecipeManagerScreen() {
@@ -39,10 +39,10 @@ public class RecipeManagerScreen extends BaseSceScreen {
     protected void init() {
         rows.clear();
         for (ClientEditorState.Entry entry : ClientEditorState.disabled()) {
-            rows.add(new Row(entry.id(), entry.display(), true, entry.broken()));
+            rows.add(new Row(entry.id(), entry.display(), true, entry.flag()));
         }
         for (ClientEditorState.Entry entry : ClientEditorState.generated()) {
-            rows.add(new Row(entry.id(), entry.display(), false, false));
+            rows.add(new Row(entry.id(), entry.display(), false, entry.flag()));
         }
         lastStateSize = rows.size();
 
@@ -97,8 +97,18 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int y = LIST_TOP + i * ROW_HEIGHT;
             int x = width / 2 - 155;
             graphics.renderItem(row.icon(), x, y);
-            int color = row.broken() ? 0xFF6060 : (row.disabled() ? 0xC0C0C0 : 0x90D090);
-            String label = row.id().toString() + (row.broken() ? " (unresolved)" : "");
+            int color;
+            String label = row.id().toString();
+            if (row.disabled()) {
+                color = 0xFF5555; // disabled -> red
+                if (row.flag()) {
+                    label += " (unresolved)";
+                }
+            } else if (row.flag()) {
+                color = 0xFFFF55; // edit of an existing recipe -> yellow
+            } else {
+                color = 0x55FF55; // brand new recipe -> green
+            }
             graphics.drawString(font, label, x + 22, y + 4, color);
         }
         super.render(graphics, mouseX, mouseY, partialTick);

@@ -137,6 +137,16 @@ public final class RecipeStateManager {
                 .orElse(ItemStack.EMPTY);
     }
 
+    /** True if a datapack recipe with this id existed before our edits (a generated recipe is then an edit). */
+    public boolean wasBaseRecipe(ResourceLocation id) {
+        for (Recipe<?> recipe : baseSnapshot) {
+            if (recipe.getId().equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean cloneRecipe(MinecraftServer server, ResourceLocation source, ResourceLocation target) {
         JsonElement raw = rawJsonCache.get(source);
         if (raw == null || !raw.isJsonObject()) {
