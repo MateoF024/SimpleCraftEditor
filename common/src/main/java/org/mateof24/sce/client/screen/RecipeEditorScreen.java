@@ -41,6 +41,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
     private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
+    private static final ResourceLocation ARROW_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_arrow.png");
 
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
     private static double pendingCursorX = -1.0;
@@ -385,15 +386,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     public void setGhostInput(int index, ItemStack stack) {
+        // Place a real item into the slot so it behaves like a normal container (pick up, drag, …).
         if (index >= 0 && index < inputCount && !stack.isEmpty()) {
-            overlay[index] = IngredientValue.item(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+            SceNetworking.sendSetSlot(index, stack.copy());
         }
     }
 
     public void setGhostOutput(int index, ItemStack stack) {
         if (index >= 0 && index < outputCount && !stack.isEmpty()) {
-            overlayOut[index] = IngredientValue.item(BuiltInRegistries.ITEM.getKey(stack.getItem()));
-            overlayOutCount[index] = Math.max(1, stack.getCount());
+            SceNetworking.sendSetSlot(inputCount + index, stack.copy());
         }
     }
 
@@ -432,7 +433,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             }
         }
         Slot firstOut = menu.outputSlot(0);
-        graphics.drawString(font, "->", leftPos + firstOut.x - 16, topPos + firstOut.y + 4, 0x404040, false);
+        graphics.blit(ARROW_TEXTURE, leftPos + firstOut.x - 26, topPos + firstOut.y + 1, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
@@ -473,7 +474,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.drawString(font, "time", 188, 58, 0x404040, false);
         }
         if (!status.isEmpty()) {
-            graphics.drawString(font, status, 8, imageHeight - 11, 0x664400, false);
+            graphics.drawCenteredString(font, status, imageWidth / 2, imageHeight + 4, 0xE0E070);
         }
     }
 

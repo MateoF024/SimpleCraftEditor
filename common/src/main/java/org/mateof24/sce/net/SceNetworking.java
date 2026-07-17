@@ -40,6 +40,7 @@ public final class SceNetworking {
     public static final ResourceLocation DELETE = channel("delete");
     public static final ResourceLocation REQUEST_JSON = channel("request_json");
     public static final ResourceLocation OPEN_EDITOR = channel("open_editor");
+    public static final ResourceLocation SET_SLOT = channel("set_slot");
     public static final ResourceLocation SYNC = channel("sync");
     public static final ResourceLocation RECIPE_JSON = channel("recipe_json");
     public static final ResourceLocation OPEN_RAW = channel("open_raw");
@@ -90,6 +91,11 @@ public final class SceNetworking {
             String idString = buf.readUtf();
             int mode = buf.readVarInt();
             context.queue(() -> handleOpenEditor(context.getPlayer(), idString, mode));
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, SET_SLOT, (buf, context) -> {
+            int slotId = buf.readVarInt();
+            ItemStack stack = buf.readItem();
+            context.queue(() -> handleSetSlot(context.getPlayer(), slotId, stack));
         });
 
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
@@ -258,5 +264,24 @@ public final class SceNetworking {
         buf.writeUtf(idString);
         buf.writeVarInt(mode);
         NetworkManager.sendToServer(OPEN_EDITOR, buf);
+    }
+
+    /** Places a real item into one of the editor's recipe slots (used by JEI/EMI drag). */
+    public static void sendSetSlot(int slotId, ItemStack stack) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeVarInt(slotId);
+        buf.writeItem(stack);
+        NetworkManager.sendToServer(SET_SLOT, buf);
+    }
+
+    private static void handleSetSlot(Player sender, int slotId, ItemStack stack) {
+        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+            return;
+        }
+        if (player.containerMenu instanceof RecipeEditorMenu menu
+                && slotId >= 0 && slotId < menu.inputCount() + menu.outputCount()) {
+            menu.getSlot(slotId).set(stack.copy());
+            menu.broadcastChanges();
+        }
     }
 }
