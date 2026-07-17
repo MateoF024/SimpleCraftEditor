@@ -39,6 +39,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private static final String[] HEAT_NAMES = {"none", "heated", "superheated"};
     private static final String[] HEAT_LABELS = {"Heat: None", "Heat: Heated", "Heat: Superheated"};
 
+    // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
+    private static double pendingCursorX = -1.0;
+    private static double pendingCursorY = -1.0;
+
     private final int mode;
     private final int inputCount;
     private final int outputCount;
@@ -139,7 +143,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         super.init();
 
         addRenderableWidget(Button.builder(Component.literal("Type: " + RecipeModes.label(mode)), b ->
-                SceNetworking.sendOpenEditor(idValue, RecipeModes.nextAvailable(mode)))
+                reopen(RecipeModes.nextAvailable(mode)))
                 .bounds(leftPos + 45, topPos + 4, 150, 16).build());
 
         idBox = new EditBox(font, leftPos + 8, topPos + 22, 180, 16, Component.literal("id"));
@@ -147,8 +151,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
-        addRenderableWidget(Button.builder(Component.literal("Load"), b ->
-                SceNetworking.sendOpenEditor(idValue, -1)).bounds(leftPos + 192, topPos + 22, 40, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("Load"), b -> reopen(-1))
+                .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
         tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.literal("tag"));
         tagBox.setMaxLength(200);
@@ -196,6 +200,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 64, topPos + 204, 58, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 204, 40, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 170, topPos + 204, 62, 20).build());
+
+        // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
+        // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
+        if (pendingCursorX >= 0.0) {
+            double cursorX = pendingCursorX;
+            double cursorY = pendingCursorY;
+            pendingCursorX = -1.0;
+            pendingCursorY = -1.0;
+            GLFW.glfwSetCursorPos(minecraft.getWindow().getWindow(), cursorX, cursorY);
+        }
+    }
+
+    /** Re-open the editor for a new type/recipe, preserving the cursor position across the transition. */
+    private void reopen(int newMode) {
+        pendingCursorX = minecraft.mouseHandler.xpos();
+        pendingCursorY = minecraft.mouseHandler.ypos();
+        SceNetworking.sendOpenEditor(idValue, newMode);
     }
 
     @Override
