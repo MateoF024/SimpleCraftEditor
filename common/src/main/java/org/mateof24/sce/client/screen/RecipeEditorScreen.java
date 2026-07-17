@@ -39,6 +39,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private static final String[] HEAT_NAMES = {"none", "heated", "superheated"};
     private static final String[] HEAT_LABELS = {"Heat: None", "Heat: Heated", "Heat: Superheated"};
 
+    private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
+    private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
+
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
     private static double pendingCursorX = -1.0;
     private static double pendingCursorY = -1.0;
@@ -398,9 +401,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, 0xD0101010);
-        graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + 1, 0xFF000000);
-        graphics.fill(leftPos, topPos + imageHeight - 1, leftPos + imageWidth, topPos + imageHeight, 0xFF000000);
+        graphics.blit(BG_TEXTURE, leftPos, topPos, imageWidth, imageHeight, 0.0F, 0.0F, imageWidth, imageHeight, imageWidth, imageHeight);
 
         for (Slot slot : menu.slots) {
             drawSlot(graphics, leftPos + slot.x, topPos + slot.y);
@@ -413,7 +414,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 drawGhost(graphics, overlay[i], x, y, 0);
             }
             if (i == selectedInput) {
-                graphics.fill(x, y, x + 16, y + 16, 0x40FFFFFF);
+                graphics.fill(x, y, x + 16, y + 16, 0x600060C0);
             }
         }
         for (int i = 0; i < outputCount; i++) {
@@ -424,19 +425,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 drawGhost(graphics, overlayOut[i], x, y, overlayOutCount[i]);
             }
             if (create && i == selectedOutput) {
-                graphics.fill(x, y, x + 16, y + 16, 0x4055FF55);
+                graphics.fill(x, y, x + 16, y + 16, 0x6020A020);
             }
             if (create && outputChance[i] < 1.0f) {
-                graphics.drawString(font, "%", x + 1, y + 1, 0xFFD070, false);
+                graphics.drawString(font, "%", x + 1, y + 1, 0xB07000, false);
             }
         }
         Slot firstOut = menu.outputSlot(0);
-        graphics.drawString(font, "->", leftPos + firstOut.x - 16, topPos + firstOut.y + 4, 0xFFFFFF, false);
+        graphics.drawString(font, "->", leftPos + firstOut.x - 16, topPos + firstOut.y + 4, 0x404040, false);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
-        graphics.fill(x - 1, y - 1, x + 17, y + 17, 0xFF8B8B8B);
-        graphics.fill(x, y, x + 16, y + 16, 0xFF373737);
+        graphics.blit(SLOT_TEXTURE, x - 1, y - 1, 18, 18, 0.0F, 0.0F, 18, 18, 18, 18);
     }
 
     private void drawGhost(GuiGraphics graphics, IngredientValue value, int x, int y, int count) {
@@ -463,17 +463,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, "tag:", 8, 88, 0xA0A0A0, false);
+        graphics.drawString(font, "tag:", 8, 88, 0x404040, false);
         if (RecipeModes.isCooking(mode)) {
-            graphics.drawString(font, "xp", 174, 46, 0xA0A0A0, false);
-            graphics.drawString(font, "time", 166, 70, 0xA0A0A0, false);
+            graphics.drawString(font, "xp", 174, 46, 0x404040, false);
+            graphics.drawString(font, "time", 166, 70, 0x404040, false);
         }
         if (create) {
-            graphics.drawString(font, "chance", 188, 34, 0xA0A0A0, false);
-            graphics.drawString(font, "time", 188, 58, 0xA0A0A0, false);
+            graphics.drawString(font, "chance", 188, 34, 0x404040, false);
+            graphics.drawString(font, "time", 188, 58, 0x404040, false);
         }
         if (!status.isEmpty()) {
-            graphics.drawString(font, status, 8, imageHeight - 11, 0xE0E070, false);
+            graphics.drawString(font, status, 8, imageHeight - 11, 0x664400, false);
         }
     }
 
