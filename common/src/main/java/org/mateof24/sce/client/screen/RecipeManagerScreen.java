@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
@@ -32,7 +33,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
     }
 
     public RecipeManagerScreen() {
-        super(Component.literal("Simple Craft Editor"));
+        super(Component.translatable("sce.manager.title"));
     }
 
     @Override
@@ -46,7 +47,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
         }
         lastStateSize = rows.size();
 
-        addRenderableWidget(Button.builder(Component.literal("New Recipe…"), b ->
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.new_recipe"), b ->
                 SceNetworking.sendOpenEditor("", 0)).bounds(width / 2 - 155, height - 30, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
                 .bounds(width / 2 + 55, height - 30, 100, 20).build());
@@ -57,21 +58,21 @@ public class RecipeManagerScreen extends BaseSceScreen {
             Row row = rows.get(scroll + i);
             int y = LIST_TOP + i * ROW_HEIGHT;
             if (row.disabled()) {
-                addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 60, 20).build());
-                addRenderableWidget(Button.builder(Component.literal("Restore"), b -> {
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.restore"), b -> {
                     SceNetworking.sendSimple(SceNetworking.ENABLE, row.id());
                     scheduleRefresh();
                 }).bounds(width / 2 + 72, y, 70, 20).build());
             } else {
-                addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 44, 20).build());
                 ResourceLocation toggleChannel = row.genDisabled() ? SceNetworking.ENABLE : SceNetworking.DISABLE;
-                addRenderableWidget(Button.builder(Component.literal(row.genDisabled() ? "Enable" : "Disable"), b -> {
+                addRenderableWidget(Button.builder(Component.translatable(row.genDisabled() ? "sce.button.enable" : "sce.button.disable"), b -> {
                     SceNetworking.sendSimple(toggleChannel, row.id());
                     scheduleRefresh();
                 }).bounds(width / 2 + 54, y, 60, 20).build());
-                addRenderableWidget(Button.builder(Component.literal("Delete"), b -> {
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.delete"), b -> {
                     SceNetworking.sendSimple(SceNetworking.DELETE, row.id());
                     scheduleRefresh();
                 }).bounds(width / 2 + 116, y, 52, 20).build());
@@ -94,7 +95,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
         if (rows.isEmpty()) {
-            graphics.drawCenteredString(font, Component.literal("No disabled or generated recipes yet."),
+            graphics.drawCenteredString(font, Component.translatable("sce.manager.empty"),
                     width / 2, LIST_TOP + 10, 0xA0A0A0);
         }
         for (int i = 0; i < maxRows && scroll + i < rows.size(); i++) {
@@ -103,15 +104,15 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int x = width / 2 - 155;
             graphics.renderItem(row.icon(), x, y);
             int color;
-            String label = row.id().toString();
+            MutableComponent label = Component.literal(row.id().toString());
             if (row.disabled()) {
                 color = 0xFF5555; // disabled datapack recipe -> red
                 if (row.flag()) {
-                    label += " (unresolved)";
+                    label.append(" ").append(Component.translatable("sce.manager.unresolved"));
                 }
             } else if (row.genDisabled()) {
                 color = 0xA0A0A0; // generated recipe toggled off -> gray
-                label += " (disabled)";
+                label.append(" ").append(Component.translatable("sce.manager.disabled_suffix"));
             } else if (row.flag()) {
                 color = 0xFFFF55; // edit of an existing recipe -> yellow
             } else {

@@ -60,7 +60,7 @@ public final class SceClient {
         if (recipeId == null) {
             if (minecraft.player != null) {
                 minecraft.player.displayClientMessage(
-                        Component.literal("[SCE] No recipe found for " + hovered.getHoverName().getString()), false);
+                        Component.translatable("sce.msg.no_recipe", hovered.getHoverName()), false);
             }
             return true;
         }

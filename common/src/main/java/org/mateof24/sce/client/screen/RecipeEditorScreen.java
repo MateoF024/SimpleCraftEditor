@@ -38,7 +38,6 @@ import org.mateof24.sce.net.SceNetworking;
 @Environment(EnvType.CLIENT)
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
     private static final String[] HEAT_NAMES = {"none", "heated", "superheated"};
-    private static final String[] HEAT_LABELS = {"Heat: None", "Heat: Heated", "Heat: Super"};
 
     private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
     private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
@@ -60,7 +59,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private int selectedInput = -1;
     private int selectedOutput = -1;
-    private String status = "";
+    private Component status = Component.empty();
 
     private String idValue;
     private String tagValue = "";
@@ -147,35 +146,35 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     protected void init() {
         super.init();
 
-        addRenderableWidget(Button.builder(Component.literal("Type: " + RecipeModes.label(mode)), b ->
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.type", Component.translatable(RecipeModes.labelKey(mode))), b ->
                 reopen(RecipeModes.nextAvailable(mode)))
                 .bounds(leftPos + 45, topPos + 4, 150, 16).build());
 
-        idBox = new EditBox(font, leftPos + 8, topPos + 22, 180, 16, Component.literal("id"));
+        idBox = new EditBox(font, leftPos + 8, topPos + 22, 180, 16, Component.translatable("sce.hint.id"));
         idBox.setMaxLength(200);
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
-        addRenderableWidget(Button.builder(Component.literal("Load"), b -> reopen(-1))
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
                 .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
-        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.literal("tag"));
+        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.translatable("sce.hint.tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tagValue);
-        tagBox.setHint(Component.literal("tag id"));
+        tagBox.setHint(Component.translatable("sce.hint.tag_id"));
         tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
-        addRenderableWidget(Button.builder(Component.literal("Set Tag"), b -> applyTag())
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.set_tag"), b -> applyTag())
                 .bounds(leftPos + 110, topPos + 98, 54, 16).build());
-        addRenderableWidget(Button.builder(Component.literal("Clear Slot"), b -> clearSelected())
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
                 .bounds(leftPos + 168, topPos + 98, 64, 16).build());
 
         if (RecipeModes.isCooking(mode)) {
-            expBox = new EditBox(font, leftPos + 190, topPos + 42, 42, 16, Component.literal("exp"));
+            expBox = new EditBox(font, leftPos + 190, topPos + 42, 42, 16, Component.translatable("sce.hint.exp"));
             expBox.setValue(Float.toString(pendingExp));
             expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
             addRenderableWidget(expBox);
-            timeBox = new EditBox(font, leftPos + 190, topPos + 66, 42, 16, Component.literal("time"));
+            timeBox = new EditBox(font, leftPos + 190, topPos + 66, 42, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
@@ -183,7 +182,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         if (create) {
             // Create's grid is only two rows tall, so its extra controls sit in the free row below it.
-            chanceBox = new EditBox(font, leftPos + 52, topPos + 80, 36, 16, Component.literal("chance"));
+            chanceBox = new EditBox(font, leftPos + 52, topPos + 80, 36, 16, Component.translatable("sce.hint.chance"));
             chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
             chanceBox.setResponder(s -> {
                 if (selectedOutput >= 0) {
@@ -191,22 +190,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             });
             addRenderableWidget(chanceBox);
-            timeBox = new EditBox(font, leftPos + 124, topPos + 80, 36, 16, Component.literal("time"));
+            timeBox = new EditBox(font, leftPos + 124, topPos + 80, 36, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
             if (mixing()) {
-                addRenderableWidget(Button.builder(Component.literal(HEAT_LABELS[heatIndex]), b -> {
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
                     rebuildWidgets();
                 }).bounds(leftPos + 164, topPos + 80, 68, 16).build());
             }
         }
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 200,52, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 64, topPos + 200,58, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 200,40, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 170, topPos + 200,62, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 200,52, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 200,58, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 200,40, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 200,62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
         // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
@@ -259,16 +258,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private void applyTag() {
         if (selectedInput < 0) {
-            status = "Click an input slot first.";
+            status = Component.translatable("sce.status.click_input_first");
             return;
         }
         if (!menu.gridItem(selectedInput).isEmpty()) {
-            status = "Clear the item out of that slot before setting a tag.";
+            status = Component.translatable("sce.status.clear_slot_first");
             return;
         }
         ResourceLocation tag = ResourceLocation.tryParse(tagValue);
         if (tag == null) {
-            status = "Invalid tag id.";
+            status = Component.translatable("sce.status.invalid_tag");
             return;
         }
         overlay[selectedInput] = IngredientValue.tag(tag);
@@ -317,23 +316,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private void save() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = "Invalid recipe id.";
+            status = Component.translatable("sce.status.invalid_id");
             return;
         }
         SceNetworking.sendSave(id, RecipeCompiler.toJson(buildDraft(id)).toString());
-        status = "Saving " + id + "…";
+        status = Component.translatable("sce.status.saving", id.toString());
     }
 
     /** Called from the network layer with the server's verdict on a save request. */
     public void onSaveResult(ResourceLocation id, boolean ok) {
-        status = ok ? "Saved " + id + "." : "Could not save " + id + " — invalid recipe.";
+        status = Component.translatable(ok ? "sce.status.saved" : "sce.status.save_failed", id.toString());
     }
 
     /** Opens the raw-JSON view for this recipe: the server's stored JSON if any, else the current draft. */
     private void openRaw() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = "Invalid recipe id.";
+            status = Component.translatable("sce.status.invalid_id");
             return;
         }
         ClientEditorState.requestJson(id, json -> {
@@ -345,11 +344,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private void disable() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = "Invalid recipe id.";
+            status = Component.translatable("sce.status.invalid_id");
             return;
         }
         SceNetworking.sendSimple(SceNetworking.DISABLE, id);
-        status = "Requested disable of " + id + ".";
+        status = Component.translatable("sce.status.requested_disable", id.toString());
     }
 
     private IngredientValue resolveInput(int index) {
@@ -486,14 +485,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         if (RecipeModes.isCooking(mode)) {
-            graphics.drawString(font, "xp", 174, 46, 0x404040, false);
-            graphics.drawString(font, "time", 166, 70, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.xp"), 174, 46, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.time"), 166, 70, 0x404040, false);
         }
         if (create) {
-            graphics.drawString(font, "chance", 8, 84, 0x404040, false);
-            graphics.drawString(font, "time", 96, 84, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, 84, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.time"), 96, 84, 0x404040, false);
         }
-        if (!status.isEmpty()) {
+        if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, imageWidth / 2, imageHeight + 4, 0xE0E070);
         }
     }

@@ -111,14 +111,13 @@ public final class SceNetworking {
         try {
             parsed = JsonParser.parseString(json).getAsJsonObject();
         } catch (Exception e) {
-            player.sendSystemMessage(Component.literal("[SCE] Could not parse recipe JSON."));
+            player.sendSystemMessage(Component.translatable("sce.msg.parse_fail"));
             sendSaveResult(player, id, false);
             return;
         }
         boolean ok = RecipeStateManager.INSTANCE.saveGenerated(player.getServer(), id, parsed);
-        player.sendSystemMessage(Component.literal(ok
-                ? "[SCE] Saved recipe " + id
-                : "[SCE] Recipe " + id + " was rejected (invalid definition)."));
+        player.sendSystemMessage(Component.translatable(
+                ok ? "sce.msg.saved" : "sce.msg.rejected", id.toString()));
         sendSaveResult(player, id, ok);
     }
 
@@ -184,7 +183,7 @@ public final class SceNetworking {
 
         @Override
         public Component getDisplayName() {
-            return Component.literal("Recipe Editor");
+            return Component.translatable("sce.editor.title");
         }
 
         @Override
@@ -202,7 +201,7 @@ public final class SceNetworking {
     }
 
     private static void deny(net.minecraft.world.entity.player.Player sender) {
-        sender.sendSystemMessage(Component.literal("[SCE] You do not have permission to edit recipes."));
+        sender.sendSystemMessage(Component.translatable("sce.msg.no_permission"));
     }
 
     // ------------------------------------------------------------------ server -> client sync

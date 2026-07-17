@@ -58,9 +58,9 @@ public final class SceCommands {
         ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
         boolean ok = RecipeStateManager.INSTANCE.disable(context.getSource().getServer(), id);
         if (ok) {
-            context.getSource().sendSuccess(() -> Component.literal("Disabled recipe " + id), true);
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.disabled", id.toString()), true);
         } else {
-            context.getSource().sendFailure(Component.literal("Recipe " + id + " is not loaded, or is already disabled."));
+            context.getSource().sendFailure(Component.translatable("sce.cmd.disable_failed", id.toString()));
         }
         return ok ? 1 : 0;
     }
@@ -69,9 +69,9 @@ public final class SceCommands {
         ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
         boolean ok = RecipeStateManager.INSTANCE.enable(context.getSource().getServer(), id);
         if (ok) {
-            context.getSource().sendSuccess(() -> Component.literal("Re-enabled recipe " + id), true);
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.enabled", id.toString()), true);
         } else {
-            context.getSource().sendFailure(Component.literal("Recipe " + id + " was not disabled."));
+            context.getSource().sendFailure(Component.translatable("sce.cmd.enable_failed", id.toString()));
         }
         return ok ? 1 : 0;
     }
@@ -81,9 +81,9 @@ public final class SceCommands {
         ResourceLocation target = ResourceLocationArgument.getId(context, "target");
         boolean ok = RecipeStateManager.INSTANCE.cloneRecipe(context.getSource().getServer(), source, target);
         if (ok) {
-            context.getSource().sendSuccess(() -> Component.literal("Cloned " + source + " into new recipe " + target), true);
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.cloned", source.toString(), target.toString()), true);
         } else {
-            context.getSource().sendFailure(Component.literal("No cached JSON for " + source + " to clone from."));
+            context.getSource().sendFailure(Component.translatable("sce.cmd.clone_failed", source.toString()));
         }
         return ok ? 1 : 0;
     }
@@ -92,28 +92,29 @@ public final class SceCommands {
         ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
         boolean ok = RecipeStateManager.INSTANCE.deleteGenerated(context.getSource().getServer(), id);
         if (ok) {
-            context.getSource().sendSuccess(() -> Component.literal("Deleted generated recipe " + id), true);
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.deleted", id.toString()), true);
         } else {
-            context.getSource().sendFailure(Component.literal("No generated recipe with id " + id + "."));
+            context.getSource().sendFailure(Component.translatable("sce.cmd.delete_failed", id.toString()));
         }
         return ok ? 1 : 0;
     }
 
     private static int reload(CommandContext<CommandSourceStack> context) {
         RecipeStateManager.INSTANCE.forceReapply(context.getSource().getServer());
-        context.getSource().sendSuccess(() -> Component.literal("Re-applied recipe state."), true);
+        context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.reloaded"), true);
         return 1;
     }
 
     private static int list(CommandContext<CommandSourceStack> context, String which) {
         RecipeState state = RecipeStateManager.INSTANCE.state();
         Collection<ResourceLocation> ids = which.equals("disabled") ? state.disabled().keySet() : state.generated().keySet();
+        Component kind = Component.translatable("sce.cmd.kind." + which);
         if (ids.isEmpty()) {
-            context.getSource().sendSuccess(() -> Component.literal("No " + which + " recipes."), false);
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.list_empty", kind), false);
             return 0;
         }
         String joined = ids.stream().map(ResourceLocation::toString).sorted().collect(Collectors.joining(", "));
-        context.getSource().sendSuccess(() -> Component.literal(ids.size() + " " + which + ": " + joined), false);
+        context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.list", ids.size(), kind, joined), false);
         return ids.size();
     }
 

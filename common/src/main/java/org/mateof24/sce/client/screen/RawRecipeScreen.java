@@ -26,10 +26,10 @@ public class RawRecipeScreen extends Screen {
     private final ResourceLocation id;
     private final String initialJson;
     private MultiLineEditBox editor;
-    private String status = "";
+    private Component status = Component.empty();
 
     public RawRecipeScreen(ResourceLocation id, String json) {
-        super(Component.literal("Raw Recipe: " + id));
+        super(Component.translatable("sce.raw.title", id.toString()));
         this.id = id;
         String pretty = json;
         try {
@@ -45,12 +45,12 @@ public class RawRecipeScreen extends Screen {
         int boxWidth = Math.min(width - 40, 420);
         int boxHeight = height - 92;
         editor = new MultiLineEditBox(font, width / 2 - boxWidth / 2, 40, boxWidth, boxHeight,
-                Component.literal("recipe json"), Component.literal("Recipe JSON"));
+                Component.translatable("sce.hint.recipe_json"), Component.translatable("sce.hint.recipe_json"));
         editor.setCharacterLimit(1024 * 1024);
         editor.setValue(initialJson);
         addRenderableWidget(editor);
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save())
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save())
                 .bounds(width / 2 - 154, height - 40, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_CANCEL, b -> onClose())
                 .bounds(width / 2 + 54, height - 40, 100, 20).build());
@@ -61,11 +61,11 @@ public class RawRecipeScreen extends Screen {
         try {
             JsonParser.parseString(text).getAsJsonObject();
         } catch (Exception e) {
-            status = "Invalid JSON.";
+            status = Component.translatable("sce.status.invalid_json");
             return;
         }
         SceNetworking.sendSave(id, text);
-        status = "Sent " + id + " to the server.";
+        status = Component.translatable("sce.status.sent", id.toString());
     }
 
     @Override
@@ -73,7 +73,7 @@ public class RawRecipeScreen extends Screen {
         renderBackground(graphics);
         graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
         super.render(graphics, mouseX, mouseY, partialTick);
-        if (!status.isEmpty()) {
+        if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, width / 2, height - 58, 0xE0E070);
         }
     }

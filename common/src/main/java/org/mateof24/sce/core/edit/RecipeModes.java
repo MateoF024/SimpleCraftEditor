@@ -24,10 +24,13 @@ public final class RecipeModes {
             null, null, null, null, null, null, null,
             "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
             "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying"};
-    private static final String[] LABEL = {
-            "Shapeless", "Shaped", "Smelting", "Blasting", "Smoking", "Campfire", "Stonecutting",
-            "Create: Mixing", "Create: Crushing", "Create: Milling", "Create: Pressing", "Create: Compacting",
-            "Create: Cutting", "Create: Splashing", "Create: Haunting", "Create: Sandpaper", "Create: Deploying"};
+    private static final String[] LABEL_KEY = {
+            "sce.mode.shapeless", "sce.mode.shaped", "sce.mode.smelting", "sce.mode.blasting",
+            "sce.mode.smoking", "sce.mode.campfire", "sce.mode.stonecutting",
+            "sce.mode.create_mixing", "sce.mode.create_crushing", "sce.mode.create_milling",
+            "sce.mode.create_pressing", "sce.mode.create_compacting", "sce.mode.create_cutting",
+            "sce.mode.create_splashing", "sce.mode.create_haunting", "sce.mode.create_sandpaper",
+            "sce.mode.create_deploying"};
     private static final int[] INPUTS = {
             9, 9, 1, 1, 1, 1, 1,
             6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
@@ -50,8 +53,9 @@ public final class RecipeModes {
         return cooking != null ? cooking : RecipeDraft.Cooking.SMELTING;
     }
 
-    public static String label(int mode) {
-        return LABEL[clamp(mode)];
+    /** Translation key for a mode's display name (e.g. {@code sce.mode.shapeless}). */
+    public static String labelKey(int mode) {
+        return LABEL_KEY[clamp(mode)];
     }
 
     public static String createType(int mode) {
