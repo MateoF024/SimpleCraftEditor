@@ -1,6 +1,7 @@
 package org.mateof24.sce.client.screen;
 
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.ChatFormatting;
@@ -447,7 +448,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         ItemStack stack = stackFor(value);
         if (!stack.isEmpty()) {
             stack.setCount(Math.max(1, count));
+            // Ghosts are only a preview of the current definition, so draw them at 70% opacity.
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            graphics.setColor(1.0F, 1.0F, 1.0F, 0.7F);
             graphics.renderItem(stack, x, y);
+            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            RenderSystem.disableBlend();
             graphics.renderItemDecorations(font, stack, x, y);
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
