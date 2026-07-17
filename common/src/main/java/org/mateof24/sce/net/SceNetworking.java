@@ -130,7 +130,7 @@ public final class SceNetworking {
     }
 
     private static void handleRequestJson(net.minecraft.world.entity.player.Player sender, ResourceLocation id) {
-        if (!(sender instanceof ServerPlayer player)) {
+        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
             return;
         }
         JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
@@ -220,6 +220,8 @@ public final class SceNetworking {
         }
         RecipeStateManager manager = RecipeStateManager.INSTANCE;
         FriendlyByteBuf buf = buffer();
+
+        buf.writeBoolean(player.hasPermissions(2)); // whether this player may open the editor at all
 
         Map<ResourceLocation, JsonObject> disabled = manager.state().disabled();
         buf.writeVarInt(disabled.size());

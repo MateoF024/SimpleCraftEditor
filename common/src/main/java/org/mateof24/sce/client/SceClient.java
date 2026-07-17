@@ -48,7 +48,7 @@ public final class SceClient {
      * recipe that produces that item. Returns true if it handled the key.
      */
     public static boolean tryLoadHoveredRecipe(int keyCode, int scanCode) {
-        if (!OPEN_MANAGER.matches(keyCode, scanCode)) {
+        if (!OPEN_MANAGER.matches(keyCode, scanCode) || !ClientEditorState.canEdit()) {
             return false;
         }
         ItemStack hovered = hoveredItem();
@@ -102,7 +102,7 @@ public final class SceClient {
         KeyMappingRegistry.register(OPEN_MANAGER);
         ClientTickEvent.CLIENT_POST.register(minecraft -> {
             while (OPEN_MANAGER.consumeClick()) {
-                if (minecraft.player != null) {
+                if (minecraft.player != null && ClientEditorState.canEdit()) {
                     minecraft.setScreen(new RecipeManagerScreen());
                 }
             }
@@ -111,9 +111,11 @@ public final class SceClient {
 
     private static void registerReceivers() {
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.SYNC, (buf, context) -> {
+            boolean canEdit = buf.readBoolean();
             List<ClientEditorState.Entry> disabled = readEntries(buf);
             List<ClientEditorState.Entry> generated = readEntries(buf);
             context.queue(() -> {
+                ClientEditorState.setCanEdit(canEdit);
                 ClientEditorState.setDisabled(disabled);
                 ClientEditorState.setGenerated(generated);
             });

@@ -27,7 +27,18 @@ public final class ClientEditorState {
     private static final List<Entry> GENERATED = new ArrayList<>();
     private static final Map<ResourceLocation, Consumer<JsonObject>> PENDING = new HashMap<>();
 
+    // Whether this player may edit recipes, decided by the server (operator, or singleplayer with cheats).
+    private static boolean canEdit;
+
     private ClientEditorState() {
+    }
+
+    public static boolean canEdit() {
+        return canEdit;
+    }
+
+    public static void setCanEdit(boolean value) {
+        canEdit = value;
     }
 
     public static List<Entry> disabled() {
