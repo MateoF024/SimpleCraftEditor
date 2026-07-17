@@ -73,6 +73,9 @@ public final class RecipeStateManager {
             result.add(recipe);
         }
         for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
+            if (s.isGeneratedDisabled(entry.getKey())) {
+                continue; // a generated recipe that is toggled off is kept but not injected
+            }
             Recipe<?> parsed = parse(entry.getKey(), entry.getValue());
             if (parsed != null) {
                 result.add(parsed);
@@ -85,6 +88,19 @@ public final class RecipeStateManager {
 
     public boolean disable(MinecraftServer server, ResourceLocation id) {
         RecipeState s = state();
+        // A generated recipe is toggled off in place rather than added to the datapack-disabled set,
+        // which would leave it both injected and "disabled" (the duplicate bug).
+        if (s.isGenerated(id)) {
+            boolean changed = s.disabled().remove(id) != null; // clean any stray datapack-disabled entry
+            if (!s.isGeneratedDisabled(id)) {
+                s.setGeneratedDisabled(id, true);
+                changed = true;
+            }
+            if (changed) {
+                reapplyAndSync(server, server.getRecipeManager());
+            }
+            return changed;
+        }
         if (s.isDisabled(id)) {
             return false;
         }
@@ -99,11 +115,19 @@ public final class RecipeStateManager {
     }
 
     public boolean enable(MinecraftServer server, ResourceLocation id) {
-        if (!state().enable(id)) {
-            return false;
+        RecipeState s = state();
+        boolean changed = false;
+        if (s.isGeneratedDisabled(id)) {
+            s.setGeneratedDisabled(id, false);
+            changed = true;
         }
-        reapplyAndSync(server, server.getRecipeManager());
-        return true;
+        if (s.enable(id)) { // removes any datapack-disabled entry (also cleans legacy duplicates)
+            changed = true;
+        }
+        if (changed) {
+            reapplyAndSync(server, server.getRecipeManager());
+        }
+        return changed;
     }
 
     /** Stores an authored recipe (create or edit-as-override), rejecting JSON that does not parse. */
@@ -135,6 +159,19 @@ public final class RecipeStateManager {
         return server.getRecipeManager().byKey(id)
                 .map(recipe -> recipe.getResultItem(server.registryAccess()))
                 .orElse(ItemStack.EMPTY);
+    }
+
+    /** Result stack of a generated recipe from its stored JSON (works even while it is toggled off). */
+    public ItemStack generatedResultOf(MinecraftServer server, ResourceLocation id) {
+        JsonObject json = state().generated().get(id);
+        if (json == null) {
+            return ItemStack.EMPTY;
+        }
+        try {
+            return RecipeManager.fromJson(id, json).getResultItem(server.registryAccess());
+        } catch (Exception e) {
+            return ItemStack.EMPTY;
+        }
     }
 
     /** True if a datapack recipe with this id existed before our edits (a generated recipe is then an edit). */

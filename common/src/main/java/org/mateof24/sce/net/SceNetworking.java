@@ -227,15 +227,17 @@ public final class SceNetworking {
             ItemStack display = disabledDisplay(server, entry.getKey(), entry.getValue());
             buf.writeResourceLocation(entry.getKey());
             buf.writeItem(display);
-            buf.writeBoolean(display.isEmpty());
+            buf.writeBoolean(display.isEmpty()); // unresolved
+            buf.writeBoolean(false);             // (unused for datapack recipes)
         }
 
         var generated = manager.state().generated().keySet();
         buf.writeVarInt(generated.size());
         for (ResourceLocation id : generated) {
             buf.writeResourceLocation(id);
-            buf.writeItem(manager.resultOf(server, id));
-            buf.writeBoolean(manager.wasBaseRecipe(id)); // true = edit of an existing recipe, false = brand new
+            buf.writeItem(manager.generatedResultOf(server, id));
+            buf.writeBoolean(manager.wasBaseRecipe(id));                // true = edit of an existing recipe
+            buf.writeBoolean(manager.state().isGeneratedDisabled(id));  // toggled off
         }
 
         NetworkManager.sendToPlayer(player, SYNC, buf);

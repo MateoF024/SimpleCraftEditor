@@ -28,7 +28,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
     private int scroll;
     private int lastStateSize = -1;
 
-    private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean flag) {
+    private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean flag, boolean genDisabled) {
     }
 
     public RecipeManagerScreen() {
@@ -39,10 +39,10 @@ public class RecipeManagerScreen extends BaseSceScreen {
     protected void init() {
         rows.clear();
         for (ClientEditorState.Entry entry : ClientEditorState.disabled()) {
-            rows.add(new Row(entry.id(), entry.display(), true, entry.flag()));
+            rows.add(new Row(entry.id(), entry.display(), true, entry.flag(), false));
         }
         for (ClientEditorState.Entry entry : ClientEditorState.generated()) {
-            rows.add(new Row(entry.id(), entry.display(), false, entry.flag()));
+            rows.add(new Row(entry.id(), entry.display(), false, entry.flag(), entry.disabled()));
         }
         lastStateSize = rows.size();
 
@@ -58,18 +58,23 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int y = LIST_TOP + i * ROW_HEIGHT;
             if (row.disabled()) {
                 addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
-                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 30, y, 55, 20).build());
+                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 60, 20).build());
                 addRenderableWidget(Button.builder(Component.literal("Restore"), b -> {
                     SceNetworking.sendSimple(SceNetworking.ENABLE, row.id());
                     scheduleRefresh();
-                }).bounds(width / 2 + 90, y, 70, 20).build());
+                }).bounds(width / 2 + 72, y, 70, 20).build());
             } else {
                 addRenderableWidget(Button.builder(Component.literal("Edit"), b ->
-                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 30, y, 55, 20).build());
+                        SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 44, 20).build());
+                ResourceLocation toggleChannel = row.genDisabled() ? SceNetworking.ENABLE : SceNetworking.DISABLE;
+                addRenderableWidget(Button.builder(Component.literal(row.genDisabled() ? "Enable" : "Disable"), b -> {
+                    SceNetworking.sendSimple(toggleChannel, row.id());
+                    scheduleRefresh();
+                }).bounds(width / 2 + 54, y, 60, 20).build());
                 addRenderableWidget(Button.builder(Component.literal("Delete"), b -> {
                     SceNetworking.sendSimple(SceNetworking.DELETE, row.id());
                     scheduleRefresh();
-                }).bounds(width / 2 + 90, y, 70, 20).build());
+                }).bounds(width / 2 + 116, y, 52, 20).build());
             }
         }
     }
@@ -100,10 +105,13 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int color;
             String label = row.id().toString();
             if (row.disabled()) {
-                color = 0xFF5555; // disabled -> red
+                color = 0xFF5555; // disabled datapack recipe -> red
                 if (row.flag()) {
                     label += " (unresolved)";
                 }
+            } else if (row.genDisabled()) {
+                color = 0xA0A0A0; // generated recipe toggled off -> gray
+                label += " (disabled)";
             } else if (row.flag()) {
                 color = 0xFFFF55; // edit of an existing recipe -> yellow
             } else {

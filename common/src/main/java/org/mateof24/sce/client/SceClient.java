@@ -147,7 +147,8 @@ public final class SceClient {
             ResourceLocation id = buf.readResourceLocation();
             ItemStack display = buf.readItem();
             boolean flag = buf.readBoolean();
-            entries.add(new ClientEditorState.Entry(id, display, flag));
+            boolean disabled = buf.readBoolean();
+            entries.add(new ClientEditorState.Entry(id, display, flag, disabled));
         }
         return entries;
     }

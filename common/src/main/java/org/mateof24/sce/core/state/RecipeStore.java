@@ -51,14 +51,8 @@ public final class RecipeStore {
                     state.generated().put(id, el.getAsJsonObject());
                 }
             });
-            if (root.has("hidden") && root.get("hidden").isJsonArray()) {
-                for (JsonElement el : root.getAsJsonArray("hidden")) {
-                    ResourceLocation id = tryParse(el.getAsString());
-                    if (id != null) {
-                        state.hidden().add(id);
-                    }
-                }
-            }
+            readArray(root, "hidden", id -> state.hidden().add(id));
+            readArray(root, "disabled_generated", id -> state.disabledGenerated().add(id));
         } catch (Exception e) {
             SimpleCraftEditor.LOGGER.error("Failed to read recipe state from {}", path, e);
         }
@@ -83,6 +77,10 @@ public final class RecipeStore {
             state.hidden().forEach(id -> hidden.add(id.toString()));
             root.add("hidden", hidden);
 
+            JsonArray disabledGenerated = new JsonArray();
+            state.disabledGenerated().forEach(id -> disabledGenerated.add(id.toString()));
+            root.add("disabled_generated", disabledGenerated);
+
             try (Writer writer = Files.newBufferedWriter(path)) {
                 GSON.toJson(root, writer);
             }
@@ -99,6 +97,18 @@ public final class RecipeStore {
             ResourceLocation id = tryParse(entry.getKey());
             if (id != null) {
                 consumer.accept(id, entry.getValue());
+            }
+        }
+    }
+
+    private static void readArray(JsonObject root, String key, java.util.function.Consumer<ResourceLocation> consumer) {
+        if (!root.has(key) || !root.get(key).isJsonArray()) {
+            return;
+        }
+        for (JsonElement el : root.getAsJsonArray(key)) {
+            ResourceLocation id = tryParse(el.getAsString());
+            if (id != null) {
+                consumer.accept(id);
             }
         }
     }

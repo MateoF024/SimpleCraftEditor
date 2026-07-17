@@ -21,6 +21,7 @@ import java.util.Set;
 public final class RecipeState {
     private final Map<ResourceLocation, JsonObject> disabled = new LinkedHashMap<>();
     private final Map<ResourceLocation, JsonObject> generated = new LinkedHashMap<>();
+    private final Set<ResourceLocation> disabledGenerated = new LinkedHashSet<>();
     private final Set<ResourceLocation> hidden = new LinkedHashSet<>();
     private final Set<ResourceLocation> broken = new LinkedHashSet<>();
 
@@ -30,6 +31,15 @@ public final class RecipeState {
 
     public Map<ResourceLocation, JsonObject> generated() {
         return generated;
+    }
+
+    /** Generated recipes that are kept but toggled off, so they are stored yet not injected. */
+    public Set<ResourceLocation> disabledGenerated() {
+        return disabledGenerated;
+    }
+
+    public boolean isGeneratedDisabled(ResourceLocation id) {
+        return disabledGenerated.contains(id);
     }
 
     public Set<ResourceLocation> hidden() {
@@ -63,7 +73,16 @@ public final class RecipeState {
 
     public boolean removeGenerated(ResourceLocation id) {
         broken.remove(id);
+        disabledGenerated.remove(id);
         return generated.remove(id) != null;
+    }
+
+    public void setGeneratedDisabled(ResourceLocation id, boolean disabled) {
+        if (disabled) {
+            disabledGenerated.add(id);
+        } else {
+            disabledGenerated.remove(id);
+        }
     }
 
     public void markBroken(ResourceLocation id) {

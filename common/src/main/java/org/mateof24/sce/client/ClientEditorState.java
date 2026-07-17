@@ -16,8 +16,11 @@ import java.util.function.Consumer;
 /** Client-side mirror of the server's disabled/generated sets, plus pending recipe-JSON requests. */
 @Environment(EnvType.CLIENT)
 public final class ClientEditorState {
-    /** {@code flag} means unresolved for disabled recipes, and "edit of an existing recipe" for generated ones. */
-    public record Entry(ResourceLocation id, ItemStack display, boolean flag) {
+    /**
+     * {@code flag} means unresolved for disabled recipes and "edit of an existing recipe" for generated ones.
+     * {@code disabled} is only meaningful for generated recipes: whether they are toggled off.
+     */
+    public record Entry(ResourceLocation id, ItemStack display, boolean flag, boolean disabled) {
     }
 
     private static final List<Entry> DISABLED = new ArrayList<>();
