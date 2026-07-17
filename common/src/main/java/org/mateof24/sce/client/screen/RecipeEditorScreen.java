@@ -199,10 +199,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             }
         }
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 52, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 64, topPos + 204, 58, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 204, 40, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 170, topPos + 204, 62, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 200,52, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 64, topPos + 200,58, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 200,40, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 170, topPos + 200,62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
         // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
