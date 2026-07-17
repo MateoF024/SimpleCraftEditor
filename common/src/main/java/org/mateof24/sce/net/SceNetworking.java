@@ -42,6 +42,7 @@ public final class SceNetworking {
     public static final ResourceLocation OPEN_EDITOR = channel("open_editor");
     public static final ResourceLocation SYNC = channel("sync");
     public static final ResourceLocation RECIPE_JSON = channel("recipe_json");
+    public static final ResourceLocation OPEN_RAW = channel("open_raw");
 
     private static final int MAX_JSON = 1024 * 1024;
 
@@ -116,7 +117,7 @@ public final class SceNetworking {
         if (!(sender instanceof ServerPlayer player)) {
             return;
         }
-        JsonObject json = RecipeStateManager.INSTANCE.rawJson(id);
+        JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
         FriendlyByteBuf buf = buffer();
         buf.writeResourceLocation(id);
         buf.writeUtf(json == null ? "" : json.toString(), MAX_JSON);
@@ -136,7 +137,13 @@ public final class SceNetworking {
             if (json != null) {
                 editJson = json.toString();
                 if (requestedMode < 0) {
-                    mode = deriveMode(editId, json);
+                    RecipeDraft draft = RecipeCompiler.fromJson(editId, json);
+                    if (draft == null) {
+                        // No typed editor for this recipe type: fall back to the raw JSON editor.
+                        sendOpenRaw(player, editId, editJson);
+                        return;
+                    }
+                    mode = RecipeModes.indexOf(draft);
                 }
             }
         }
@@ -144,9 +151,11 @@ public final class SceNetworking {
         MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson, mode));
     }
 
-    private static int deriveMode(ResourceLocation id, JsonObject json) {
-        RecipeDraft draft = RecipeCompiler.fromJson(id, json);
-        return draft == null ? 0 : RecipeModes.indexOf(draft);
+    public static void sendOpenRaw(ServerPlayer player, ResourceLocation id, String json) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeResourceLocation(id);
+        buf.writeUtf(json, MAX_JSON);
+        NetworkManager.sendToPlayer(player, OPEN_RAW, buf);
     }
 
     private record EditorMenuProvider(@Nullable ResourceLocation editId, String editJson, int mode) implements ExtendedMenuProvider {

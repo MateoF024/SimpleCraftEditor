@@ -10,9 +10,11 @@ import dev.architectury.registry.menu.MenuRegistry;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
+import org.mateof24.sce.client.screen.RawRecipeScreen;
 import org.mateof24.sce.client.screen.RecipeEditorScreen;
 import org.mateof24.sce.client.screen.RecipeManagerScreen;
 import org.mateof24.sce.net.SceNetworking;
@@ -57,6 +59,11 @@ public final class SceClient {
             String raw = buf.readUtf(1024 * 1024);
             JsonObject json = raw.isEmpty() ? null : JsonParser.parseString(raw).getAsJsonObject();
             context.queue(() -> ClientEditorState.onJsonResponse(id, json));
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.OPEN_RAW, (buf, context) -> {
+            ResourceLocation id = buf.readResourceLocation();
+            String json = buf.readUtf(1024 * 1024);
+            context.queue(() -> Minecraft.getInstance().setScreen(new RawRecipeScreen(id, json)));
         });
     }
 

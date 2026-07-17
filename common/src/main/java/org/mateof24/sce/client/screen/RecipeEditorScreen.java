@@ -19,6 +19,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
+import org.mateof24.sce.client.ClientEditorState;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
@@ -191,9 +192,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             }
         }
 
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 72, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 84, topPos + 204, 72, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 160, topPos + 204, 72, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> save()).bounds(leftPos + 8, topPos + 204, 52, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Disable"), b -> disable()).bounds(leftPos + 64, topPos + 204, 58, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 204, 40, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose()).bounds(leftPos + 170, topPos + 204, 62, 20).build());
     }
 
     @Override
@@ -250,12 +252,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
-    private void save() {
-        ResourceLocation id = ResourceLocation.tryParse(idValue);
-        if (id == null) {
-            status = "Invalid recipe id.";
-            return;
-        }
+    private RecipeDraft buildDraft(ResourceLocation id) {
         RecipeDraft draft = new RecipeDraft();
         draft.id = id;
         draft.width = 3;
@@ -286,9 +283,30 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 draft.cookingTime = pendingTime;
             }
         }
-        JsonObject json = RecipeCompiler.toJson(draft);
-        SceNetworking.sendSave(id, json.toString());
+        return draft;
+    }
+
+    private void save() {
+        ResourceLocation id = ResourceLocation.tryParse(idValue);
+        if (id == null) {
+            status = "Invalid recipe id.";
+            return;
+        }
+        SceNetworking.sendSave(id, RecipeCompiler.toJson(buildDraft(id)).toString());
         status = "Saved " + id + ".";
+    }
+
+    /** Opens the raw-JSON view for this recipe: the server's stored JSON if any, else the current draft. */
+    private void openRaw() {
+        ResourceLocation id = ResourceLocation.tryParse(idValue);
+        if (id == null) {
+            status = "Invalid recipe id.";
+            return;
+        }
+        ClientEditorState.requestJson(id, json -> {
+            String text = json != null ? json.toString() : RecipeCompiler.toJson(buildDraft(id)).toString();
+            minecraft.setScreen(new RawRecipeScreen(id, text));
+        });
     }
 
     private void disable() {
