@@ -34,21 +34,6 @@ configurations {
 // libs/ tree (see roadmap). Compile-time only: we never bundle or hard-depend on them, and Create
 // is a soft dependency loaded only when present.
 def integrationLibs = file("${rootProject.projectDir}/libs/v1.20.1/forge")
-def createDeps = file("${rootProject.projectDir}/libs/v1.20.1/forge/create-deps")
-
-// Create ships Flywheel, Ponder, Registrate and MixinExtras jar-in-jar. The dev runtime never unpacks
-// those, so Create cannot start without them; extract them once next to the Create jar. Delete
-// create-deps/ to have them re-extracted after updating Create.
-def createJars = fileTree(dir: integrationLibs, include: 'create-*.jar').files
-def createDepsReady = createDeps.isDirectory() && (createDeps.listFiles({ f -> f.name.endsWith('.jar') } as FileFilter)?.length ?: 0) > 0
-if (!createJars.isEmpty() && !createDepsReady) {
-    copy {
-        from(zipTree(createJars.first()).matching { include 'META-INF/jarjar/*.jar' })
-        into createDeps
-        eachFile { it.path = it.name }
-        includeEmptyDirs = false
-    }
-}
 
 dependencies {
     forge "net.minecraftforge:forge:$rootProject.forge_version"
@@ -63,15 +48,11 @@ dependencies {
     // EMI is intentionally not loaded in the Forge dev client: Loom does not remap EMI's mixins for a
     // file-dependency here, so its AbstractInventoryScreenMixin crashes on launch. EMI is tested on the
     // Fabric dev client (where it is native) and works normally in a production Forge install.
+    //
+    // Create is not loaded here either. It starts, but Loom cannot remap Create's calls to methods that
+    // Registrate inherits from Minecraft, so opening the creative inventory dies with a NoSuchMethodError
+    // on ItemProviderEntry.m_5456_. Create's recipe types are tested in a real install instead.
     modLocalRuntime fileTree(dir: integrationLibs, include: 'jei-*.jar')
-
-    // Load Create in the dev client to exercise its recipe types. Create ships Flywheel, Ponder,
-    // Registrate and MixinExtras jar-in-jar, which the dev runtime does not unpack, so they are
-    // extracted into create-deps/ and loaded alongside it.
-    modLocalRuntime fileTree(dir: integrationLibs, include: 'create-*.jar')
-    modLocalRuntime fileTree(dir: createDeps, include: '*.jar', exclude: 'mixinextras-*.jar')
-    // MixinExtras is a plain library and must not be remapped, or its bootstrap class is not found.
-    runtimeOnly fileTree(dir: createDeps, include: 'mixinextras-*.jar')
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionForge')
