@@ -32,7 +32,7 @@ public final class CreateRecipeCompiler {
                 continue;
             }
             JsonObject result = new JsonObject();
-            result.addProperty("item", entry.item.id().toString());
+            result.addProperty("id", entry.item.id().toString()); // Create 6.x results are vanilla item stacks
             if (entry.count > 1) {
                 result.addProperty("count", entry.count);
             }
@@ -44,10 +44,10 @@ public final class CreateRecipeCompiler {
         json.add("results", results);
 
         if (draft.processingTime > 0) {
-            json.addProperty("processingTime", draft.processingTime);
+            json.addProperty("processing_time", draft.processingTime);
         }
         if (draft.heat != null && !draft.heat.isBlank() && !draft.heat.equals("none")) {
-            json.addProperty("heatRequirement", draft.heat);
+            json.addProperty("heat_requirement", draft.heat);
         }
         return json;
     }
@@ -77,17 +77,32 @@ public final class CreateRecipeCompiler {
                     continue;
                 }
                 JsonObject object = element.getAsJsonObject();
-                if (!object.has("item")) {
-                    continue; // fluid result, not editable yet
+                String idKey = object.has("id") ? "id" : (object.has("item") ? "item" : null);
+                if (idKey == null) {
+                    continue; // fluid result (no item id), not editable yet
                 }
-                IngredientValue item = IngredientValue.item(ResourceLocation.tryParse(object.get("item").getAsString()));
+                IngredientValue item = IngredientValue.item(ResourceLocation.tryParse(object.get(idKey).getAsString()));
                 int count = object.has("count") ? object.get("count").getAsInt() : 1;
                 float chance = object.has("chance") ? object.get("chance").getAsFloat() : 1.0f;
                 draft.results.add(new RecipeDraft.ResultEntry(item, count, chance));
             }
         }
-        draft.processingTime = json.has("processingTime") ? json.get("processingTime").getAsInt() : 0;
-        draft.heat = json.has("heatRequirement") ? json.get("heatRequirement").getAsString() : "none";
+        draft.processingTime = readInt(json, "processing_time", "processingTime");
+        draft.heat = readString(json, "heat_requirement", "heatRequirement", "none");
         return draft;
+    }
+
+    private static int readInt(JsonObject json, String key, String legacyKey) {
+        if (json.has(key)) {
+            return json.get(key).getAsInt();
+        }
+        return json.has(legacyKey) ? json.get(legacyKey).getAsInt() : 0;
+    }
+
+    private static String readString(JsonObject json, String key, String legacyKey, String fallback) {
+        if (json.has(key)) {
+            return json.get(key).getAsString();
+        }
+        return json.has(legacyKey) ? json.get(legacyKey).getAsString() : fallback;
     }
 }
