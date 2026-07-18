@@ -8,4 +8,9 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
 
     modImplementation "dev.architectury:architectury:${rootProject.architectury_api_v1211}"
+
+    // Recipe-viewer APIs for the integration code that lives in common. Compile-time only; the same
+    // mezz.jei.api / dev.emi.emi.api classes ship in both loader jars, so the Fabric jars are used here.
+    modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.21.1/fabric", include: 'jei-*.jar')
+    modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.21.1/fabric", include: 'emi-*.jar')
 }
