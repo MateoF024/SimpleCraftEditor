@@ -100,7 +100,6 @@ public final class SceClient {
     public static void init() {
         SceNetworking.setClientRegistryAccess(() -> Minecraft.getInstance().level.registryAccess());
         registerReceivers();
-        MenuRegistry.registerScreenFactory(SceMenus.RECIPE_EDITOR.get(), RecipeEditorScreen::new);
         KeyMappingRegistry.register(OPEN_MANAGER);
         ClientTickEvent.CLIENT_POST.register(minecraft -> {
             while (OPEN_MANAGER.consumeClick()) {
@@ -109,6 +108,16 @@ public final class SceClient {
                 }
             }
         });
+    }
+
+    /**
+     * Registers the editor's screen. Kept separate from {@link #init()} because it must run once the menu
+     * type is registered but before the screen-registration event fires — a window each loader reaches at a
+     * different time, so the loader entrypoints call it (Fabric at client init; NeoForge inside
+     * {@code RegisterMenuScreensEvent}, where the menu supplier is already resolvable).
+     */
+    public static void registerEditorScreen() {
+        MenuRegistry.registerScreenFactory(SceMenus.RECIPE_EDITOR.get(), RecipeEditorScreen::new);
     }
 
     private static void registerReceivers() {
