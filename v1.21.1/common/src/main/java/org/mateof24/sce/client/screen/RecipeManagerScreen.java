@@ -27,7 +27,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
 
     private final List<Row> rows = new ArrayList<>();
     private int scroll;
-    private int lastStateSize = -1;
+    private int lastStateSig;
 
     private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean flag, boolean genDisabled) {
     }
@@ -45,7 +45,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
         for (ClientEditorState.Entry entry : ClientEditorState.generated()) {
             rows.add(new Row(entry.id(), entry.display(), false, entry.flag(), entry.disabled()));
         }
-        lastStateSize = rows.size();
+        lastStateSig = stateSignature();
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.new_recipe"), b ->
                 SceNetworking.sendOpenEditor("", 0)).bounds(width / 2 - 155, height - 30, 100, 20).build());
@@ -60,34 +60,44 @@ public class RecipeManagerScreen extends BaseSceScreen {
             if (row.disabled()) {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 60, 20).build());
-                addRenderableWidget(Button.builder(Component.translatable("sce.button.restore"), b -> {
-                    SceNetworking.sendSimple(SceNetworking.ENABLE, row.id());
-                    scheduleRefresh();
-                }).bounds(width / 2 + 72, y, 70, 20).build());
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.restore"), b ->
+                        SceNetworking.sendSimple(SceNetworking.ENABLE, row.id()))
+                        .bounds(width / 2 + 72, y, 70, 20).build());
             } else {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 44, 20).build());
                 ResourceLocation toggleChannel = row.genDisabled() ? SceNetworking.ENABLE : SceNetworking.DISABLE;
-                addRenderableWidget(Button.builder(Component.translatable(row.genDisabled() ? "sce.button.enable" : "sce.button.disable"), b -> {
-                    SceNetworking.sendSimple(toggleChannel, row.id());
-                    scheduleRefresh();
-                }).bounds(width / 2 + 54, y, 60, 20).build());
-                addRenderableWidget(Button.builder(Component.translatable("sce.button.delete"), b -> {
-                    SceNetworking.sendSimple(SceNetworking.DELETE, row.id());
-                    scheduleRefresh();
-                }).bounds(width / 2 + 116, y, 52, 20).build());
+                addRenderableWidget(Button.builder(Component.translatable(row.genDisabled() ? "sce.button.enable" : "sce.button.disable"), b ->
+                        SceNetworking.sendSimple(toggleChannel, row.id()))
+                        .bounds(width / 2 + 54, y, 60, 20).build());
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.delete"), b ->
+                        SceNetworking.sendSimple(SceNetworking.DELETE, row.id()))
+                        .bounds(width / 2 + 116, y, 52, 20).build());
             }
         }
     }
 
-    private void scheduleRefresh() {
-        lastStateSize = -1; // force a rebuild once the server sync arrives
+    /**
+     * A fingerprint of the parts of the editor state the list shows. Rebuilding on a change to this rather
+     * than on the row count is what makes a generated recipe's Disable/Enable toggle take effect on the
+     * first click: toggling it keeps the same number of rows, so a count check would never notice the flip.
+     */
+    private int stateSignature() {
+        int hash = 1;
+        for (ClientEditorState.Entry entry : ClientEditorState.disabled()) {
+            hash = 31 * hash + entry.id().hashCode();
+            hash = 31 * hash + (entry.flag() ? 1 : 0);
+        }
+        for (ClientEditorState.Entry entry : ClientEditorState.generated()) {
+            hash = 31 * hash + entry.id().hashCode();
+            hash = 31 * hash + (entry.flag() ? 2 : 0) + (entry.disabled() ? 1 : 0);
+        }
+        return hash;
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        int currentSize = ClientEditorState.disabled().size() + ClientEditorState.generated().size();
-        if (currentSize != lastStateSize) {
+        if (stateSignature() != lastStateSig) {
             rebuildWidgets();
         }
         // super.render renders the blurred background and the widgets (buttons); the list text and icons
