@@ -101,6 +101,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
             graphics.drawCenteredString(font, Component.translatable("sce.manager.empty"),
                     width / 2, LIST_TOP + 10, 0xA0A0A0);
         }
+        MutableComponent hoverTooltip = null;
         for (int i = 0; i < maxRows && scroll + i < rows.size(); i++) {
             Row row = rows.get(scroll + i);
             int y = LIST_TOP + i * ROW_HEIGHT;
@@ -121,7 +122,23 @@ public class RecipeManagerScreen extends BaseSceScreen {
             } else {
                 color = 0x55FF55; // brand new recipe -> green
             }
-            graphics.drawString(font, label, x + 22, y + 4, color);
+            // Clip the id to the space before the buttons so a long id never runs under them; the full id
+            // is shown as a tooltip on hover instead.
+            int textX = x + 22;
+            int maxTextWidth = width / 2 + 4 - textX;
+            String full = label.getString();
+            if (font.width(full) > maxTextWidth) {
+                graphics.drawString(font, font.plainSubstrByWidth(full, maxTextWidth - font.width("…")) + "…",
+                        textX, y + 4, color);
+                if (mouseX >= textX && mouseX < width / 2 + 4 && mouseY >= y && mouseY < y + 16) {
+                    hoverTooltip = label;
+                }
+            } else {
+                graphics.drawString(font, full, textX, y + 4, color);
+            }
+        }
+        if (hoverTooltip != null) {
+            graphics.renderTooltip(font, hoverTooltip, mouseX, mouseY);
         }
     }
 
