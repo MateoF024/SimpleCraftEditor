@@ -90,7 +90,10 @@ public class RecipeManagerScreen extends BaseSceScreen {
         if (currentSize != lastStateSize) {
             rebuildWidgets();
         }
-        renderBackground(graphics, mouseX, mouseY, partialTick);
+        // super.render renders the blurred background and the widgets (buttons); the list text and icons
+        // must be drawn after it, or the second blur it applies would smear them (they're a plain Screen's
+        // foreground, unlike a container screen whose labels draw inside its own render).
+        super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFF);
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
@@ -120,7 +123,6 @@ public class RecipeManagerScreen extends BaseSceScreen {
             }
             graphics.drawString(font, label, x + 22, y + 4, color);
         }
-        super.render(graphics, mouseX, mouseY, partialTick);
     }
 
     @Override
