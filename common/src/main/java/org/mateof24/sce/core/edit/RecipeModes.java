@@ -15,28 +15,38 @@ public final class RecipeModes {
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING};
+            RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING};
     private static final RecipeDraft.Cooking[] COOK = {
             null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
             RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null,
-            null, null, null, null, null, null, null, null, null, null};
+            null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null};
     private static final String[] CREATE_TYPE = {
             null, null, null, null, null, null, null,
             "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
-            "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying"};
+            "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying",
+            // Spout, Item Drain, Basin, and the two item-swap machines: all plain processing recipes, so they
+            // share the ingredient/result layout of the types above.
+            "create:filling", "create:emptying", "create:basin", "create:conversion", "create:item_application"};
     private static final String[] LABEL_KEY = {
             "sce.mode.shapeless", "sce.mode.shaped", "sce.mode.smelting", "sce.mode.blasting",
             "sce.mode.smoking", "sce.mode.campfire", "sce.mode.stonecutting",
             "sce.mode.create_mixing", "sce.mode.create_crushing", "sce.mode.create_milling",
             "sce.mode.create_pressing", "sce.mode.create_compacting", "sce.mode.create_cutting",
             "sce.mode.create_splashing", "sce.mode.create_haunting", "sce.mode.create_sandpaper",
-            "sce.mode.create_deploying"};
+            "sce.mode.create_deploying",
+            "sce.mode.create_filling", "sce.mode.create_emptying", "sce.mode.create_basin",
+            "sce.mode.create_conversion", "sce.mode.create_item_application"};
     private static final int[] INPUTS = {
             9, 9, 1, 1, 1, 1, 1,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6};
     private static final int[] OUTPUTS = {
             1, 1, 1, 1, 1, 1, 1,
-            4, 4, 4, 4, 4, 4, 4, 4, 4, 4};
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4};
 
     public static final int COUNT = KIND.length;
     private static final int FIRST_CREATE = 7;

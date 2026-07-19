@@ -62,6 +62,11 @@
   "sce.mode.create_haunting": "Create: Haunting",
   "sce.mode.create_sandpaper": "Create: Sandpaper",
   "sce.mode.create_deploying": "Create: Deploying",
+  "sce.mode.create_filling": "Create: Filling",
+  "sce.mode.create_emptying": "Create: Emptying",
+  "sce.mode.create_basin": "Create: Basin",
+  "sce.mode.create_conversion": "Create: Conversion",
+  "sce.mode.create_item_application": "Create: Item Application",
 
   "sce.status.click_input_first": "Click an input slot first.",
   "sce.status.clear_slot_first": "Clear the item out of that slot before setting a tag.",
