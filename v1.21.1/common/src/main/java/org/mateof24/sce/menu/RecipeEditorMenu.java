@@ -62,13 +62,14 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
             addSlot(new Slot(output, i, x, y));
         }
 
+        // The inventory sits below the tag and fluid rows; keep in sync with the panel texture height.
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 120 + row * 18));
+                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 144 + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 39 + col * 18, 180));
+            addSlot(new Slot(inventory, col, 39 + col * 18, 204));
         }
     }
 

@@ -59,6 +59,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private int selectedInput = -1;
     private int selectedOutput = -1;
+    /** Whether the slot picked last was an output, so the fluid row knows which one to write to. */
+    private boolean selectedIsOutput;
+
+    private EditBox fluidBox;
+    private EditBox fluidAmountBox;
+    private String fluidValue = "";
+    private String fluidAmountValue = Integer.toString(IngredientValue.BUCKET);
     private Component status = Component.empty();
 
     private String idValue;
@@ -76,7 +83,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.imageWidth = 240;
-        this.imageHeight = 228;
+        this.imageHeight = 252;
         this.mode = menu.mode();
         this.inputCount = menu.inputCount();
         this.outputCount = menu.outputCount();
@@ -200,12 +207,26 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     rebuildWidgets();
                 }).bounds(leftPos + 164, topPos + 80, 68, 16).build());
             }
+
+            // Only Create takes fluids, and it takes them as an amount rather than as a bucket item.
+            fluidBox = new EditBox(font, leftPos + 8, topPos + 118, 110, 16, Component.translatable("sce.hint.fluid"));
+            fluidBox.setMaxLength(200);
+            fluidBox.setValue(fluidValue);
+            fluidBox.setHint(Component.translatable("sce.hint.fluid_id"));
+            fluidBox.setResponder(s -> fluidValue = s);
+            addRenderableWidget(fluidBox);
+            fluidAmountBox = new EditBox(font, leftPos + 122, topPos + 118, 40, 16, Component.translatable("sce.hint.amount"));
+            fluidAmountBox.setValue(fluidAmountValue);
+            fluidAmountBox.setResponder(s -> fluidAmountValue = s);
+            addRenderableWidget(fluidAmountBox);
+            addRenderableWidget(Button.builder(Component.translatable("sce.button.set_fluid"), b -> applyFluid())
+                    .bounds(leftPos + 166, topPos + 118, 66, 16).build());
         }
 
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 200,52, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 200,58, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 200,40, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 200,62, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 224,52, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 224,58, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 224,40, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 224,62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
         // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
@@ -242,18 +263,39 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slotId >= 0 && slotId < inputCount) {
             selectedInput = slotId;
+            selectedIsOutput = false;
             IngredientValue current = overlay[slotId];
             tagValue = current != null && current.kind() == IngredientValue.Kind.TAG ? current.id().toString() : "";
             if (tagBox != null) {
                 tagBox.setValue(tagValue);
             }
+            syncFluidBoxes(current);
         } else if (slotId >= inputCount && slotId < inputCount + outputCount) {
             selectedOutput = slotId - inputCount;
+            selectedIsOutput = true;
             if (chanceBox != null) {
                 chanceBox.setValue(Float.toString(outputChance[selectedOutput]));
             }
+            syncFluidBoxes(overlayOut[selectedOutput]);
         }
         super.slotClicked(slot, slotId, mouseButton, type);
+    }
+
+    /** Mirrors the picked slot's fluid, if it holds one, into the fluid row so it can be adjusted. */
+    private void syncFluidBoxes(IngredientValue current) {
+        if (fluidBox == null) {
+            return;
+        }
+        if (current != null && current.isFluid()) {
+            fluidValue = current.id().toString();
+            fluidAmountValue = Integer.toString(current.amount());
+        } else {
+            fluidValue = "";
+        }
+        fluidBox.setValue(fluidValue);
+        if (fluidAmountBox != null) {
+            fluidAmountBox.setValue(fluidAmountValue);
+        }
     }
 
     private void applyTag() {
@@ -273,8 +315,37 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         overlay[selectedInput] = IngredientValue.tag(tag);
     }
 
+    /** Puts a fluid, with its millibucket amount, into whichever recipe slot was picked last. */
+    private void applyFluid() {
+        ResourceLocation fluid = ResourceLocation.tryParse(fluidValue);
+        if (fluid == null) {
+            status = Component.translatable("sce.status.invalid_fluid");
+            return;
+        }
+        int amount = Math.max(1, parseInt(fluidAmountValue, IngredientValue.BUCKET));
+        if (selectedIsOutput && selectedOutput >= 0) {
+            if (!menu.outputItem(selectedOutput).isEmpty()) {
+                status = Component.translatable("sce.status.clear_slot_first");
+                return;
+            }
+            overlayOut[selectedOutput] = IngredientValue.fluid(fluid, amount);
+            return;
+        }
+        if (selectedInput < 0) {
+            status = Component.translatable("sce.status.click_slot_first");
+            return;
+        }
+        if (!menu.gridItem(selectedInput).isEmpty()) {
+            status = Component.translatable("sce.status.clear_slot_first");
+            return;
+        }
+        overlay[selectedInput] = IngredientValue.fluid(fluid, amount);
+    }
+
     private void clearSelected() {
-        if (selectedInput >= 0) {
+        if (selectedIsOutput && selectedOutput >= 0) {
+            overlayOut[selectedOutput] = IngredientValue.empty();
+        } else if (selectedInput >= 0) {
             overlay[selectedInput] = IngredientValue.empty();
         }
     }
