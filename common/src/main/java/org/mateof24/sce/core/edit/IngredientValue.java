@@ -6,20 +6,31 @@ import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * A single editable ingredient option: an item, a tag, or empty. Kept deliberately simple (one option
- * per slot) for the vanilla editors; multi-option ingredients collapse to their first option on load.
+ * A single editable ingredient option: an item, an item tag, a fluid, or empty. Kept deliberately simple
+ * (one option per slot) for the vanilla editors; multi-option ingredients collapse to their first option
+ * on load.
+ *
+ * <p>Fluids only appear in Create recipes, which take them as a quantity rather than as a bucket item.
+ * {@link #amount()} carries that quantity in millibuckets (1 bucket = 1000 mB) and is meaningless for the
+ * other kinds. The fluid JSON shape differs between Create versions, so it is written by
+ * {@link CreateRecipeCompiler} rather than here.
  */
 public final class IngredientValue {
-    public enum Kind {EMPTY, ITEM, TAG}
+    public enum Kind {EMPTY, ITEM, TAG, FLUID}
 
-    private static final IngredientValue EMPTY = new IngredientValue(Kind.EMPTY, null);
+    /** A bucket in millibuckets — the unit Create counts fluids in. */
+    public static final int BUCKET = 1000;
+
+    private static final IngredientValue EMPTY = new IngredientValue(Kind.EMPTY, null, 0);
 
     private final Kind kind;
     private final ResourceLocation id;
+    private final int amount;
 
-    private IngredientValue(Kind kind, ResourceLocation id) {
+    private IngredientValue(Kind kind, ResourceLocation id, int amount) {
         this.kind = kind;
         this.id = id;
+        this.amount = amount;
     }
 
     public static IngredientValue empty() {
@@ -27,11 +38,16 @@ public final class IngredientValue {
     }
 
     public static IngredientValue item(ResourceLocation item) {
-        return new IngredientValue(Kind.ITEM, item);
+        return new IngredientValue(Kind.ITEM, item, 0);
     }
 
     public static IngredientValue tag(ResourceLocation tag) {
-        return new IngredientValue(Kind.TAG, tag);
+        return new IngredientValue(Kind.TAG, tag, 0);
+    }
+
+    /** A fluid ingredient or result of {@code amount} millibuckets. */
+    public static IngredientValue fluid(ResourceLocation fluid, int amount) {
+        return new IngredientValue(Kind.FLUID, fluid, Math.max(1, amount));
     }
 
     public Kind kind() {
@@ -40,6 +56,15 @@ public final class IngredientValue {
 
     public ResourceLocation id() {
         return id;
+    }
+
+    /** Millibuckets, for {@link Kind#FLUID} only; 0 for every other kind. */
+    public int amount() {
+        return amount;
+    }
+
+    public boolean isFluid() {
+        return kind == Kind.FLUID && id != null;
     }
 
     public boolean isEmpty() {

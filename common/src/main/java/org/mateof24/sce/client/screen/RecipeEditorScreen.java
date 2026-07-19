@@ -472,12 +472,30 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
             graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55, false);
+        } else if (value.isFluid()) {
+            // A fluid is a quantity rather than an item, so mark the slot and show how much it is.
+            graphics.drawString(font, "~", x + 1, y + 1, 0x55AAFF, false);
+            graphics.pose().pushPose();
+            graphics.pose().translate(x, y + 10, 200.0F);
+            graphics.pose().scale(0.5F, 0.5F, 1.0F);
+            graphics.drawString(font, shortAmount(value.amount()), 0, 0, 0x9CDCFF, false);
+            graphics.pose().popPose();
         }
+    }
+
+    /** Compact millibucket label: 1000 mB shows as "1B", anything else as its mB count. */
+    private static String shortAmount(int millibuckets) {
+        return millibuckets % IngredientValue.BUCKET == 0
+                ? (millibuckets / IngredientValue.BUCKET) + "B"
+                : millibuckets + "mb";
     }
 
     private static ItemStack stackFor(IngredientValue value) {
         if (value.kind() == IngredientValue.Kind.TAG) {
             return new ItemStack(Items.NAME_TAG);
+        }
+        if (value.isFluid()) {
+            return new ItemStack(Items.BUCKET); // stand-in icon; the fluid id is in the tooltip
         }
         return new ItemStack(BuiltInRegistries.ITEM.get(value.id()));
     }
@@ -533,6 +551,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
             graphics.renderTooltip(font, Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN), mouseX, mouseY);
+        } else if (value.isFluid()) {
+            graphics.renderTooltip(font, Component.literal(value.id() + " (" + value.amount() + " mB)")
+                    .withStyle(ChatFormatting.AQUA), mouseX, mouseY);
         } else {
             ItemStack stack = stackFor(value);
             graphics.renderTooltip(font, getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);

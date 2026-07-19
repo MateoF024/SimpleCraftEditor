@@ -20,15 +20,20 @@ public final class CreateRecipeCompiler {
 
         JsonArray ingredients = new JsonArray();
         for (IngredientValue value : draft.inputs) {
-            if (!value.isEmpty()) {
-                ingredients.add(value.toIngredientJson());
+            if (value.isEmpty()) {
+                continue;
             }
+            ingredients.add(value.isFluid() ? fluidJson(value) : value.toIngredientJson());
         }
         json.add("ingredients", ingredients);
 
         JsonArray results = new JsonArray();
         for (RecipeDraft.ResultEntry entry : draft.results) {
             if (entry.item == null || entry.item.isEmpty()) {
+                continue;
+            }
+            if (entry.item.isFluid()) {
+                results.add(fluidJson(entry.item)); // a fluid result carries an amount, not a count/chance
                 continue;
             }
             JsonObject result = new JsonObject();
@@ -62,13 +67,19 @@ public final class CreateRecipeCompiler {
 
         if (json.has("ingredients") && json.get("ingredients").isJsonArray()) {
             for (JsonElement element : json.getAsJsonArray("ingredients")) {
-                if (element.isJsonObject()) {
-                    JsonObject object = element.getAsJsonObject();
-                    if (object.has("fluid") || object.has("fluidTag")) {
-                        continue; // fluid ingredient, not editable yet
-                    }
-                    draft.inputs.add(IngredientValue.fromIngredientJson(element));
+                if (!element.isJsonObject()) {
+                    continue;
                 }
+                JsonObject object = element.getAsJsonObject();
+                IngredientValue fluid = readFluid(object);
+                if (fluid != null) {
+                    draft.inputs.add(fluid);
+                    continue;
+                }
+                if (object.has("fluidTag")) {
+                    continue; // a fluid tag has no single fluid to show; not editable yet
+                }
+                draft.inputs.add(IngredientValue.fromIngredientJson(element));
             }
         }
         if (json.has("results") && json.get("results").isJsonArray()) {
@@ -77,8 +88,13 @@ public final class CreateRecipeCompiler {
                     continue;
                 }
                 JsonObject object = element.getAsJsonObject();
+                IngredientValue fluid = readFluid(object);
+                if (fluid != null) {
+                    draft.results.add(new RecipeDraft.ResultEntry(fluid, 1, 1.0f));
+                    continue;
+                }
                 if (!object.has("item")) {
-                    continue; // fluid result, not editable yet
+                    continue; // neither an item nor a fluid we can show
                 }
                 IngredientValue item = IngredientValue.item(ResourceLocation.tryParse(object.get("item").getAsString()));
                 int count = object.has("count") ? object.get("count").getAsInt() : 1;
@@ -89,5 +105,26 @@ public final class CreateRecipeCompiler {
         draft.processingTime = json.has("processingTime") ? json.get("processingTime").getAsInt() : 0;
         draft.heat = json.has("heatRequirement") ? json.get("heatRequirement").getAsString() : "none";
         return draft;
+    }
+
+    /** Create 1.20.1 writes a fluid inline as {@code {"fluid": id, "amount": mB}}. */
+    private static JsonObject fluidJson(IngredientValue value) {
+        JsonObject json = new JsonObject();
+        json.addProperty("fluid", value.id().toString());
+        json.addProperty("amount", value.amount());
+        return json;
+    }
+
+    /** Reads an inline fluid entry, or null if this entry is not a fluid. */
+    private static IngredientValue readFluid(JsonObject object) {
+        if (!object.has("fluid")) {
+            return null;
+        }
+        ResourceLocation fluid = ResourceLocation.tryParse(object.get("fluid").getAsString());
+        if (fluid == null) {
+            return null;
+        }
+        int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
+        return IngredientValue.fluid(fluid, amount);
     }
 }

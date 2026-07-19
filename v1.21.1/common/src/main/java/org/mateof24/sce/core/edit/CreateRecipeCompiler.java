@@ -20,15 +20,20 @@ public final class CreateRecipeCompiler {
 
         JsonArray ingredients = new JsonArray();
         for (IngredientValue value : draft.inputs) {
-            if (!value.isEmpty()) {
-                ingredients.add(value.toIngredientJson());
+            if (value.isEmpty()) {
+                continue;
             }
+            ingredients.add(value.isFluid() ? fluidIngredientJson(value) : value.toIngredientJson());
         }
         json.add("ingredients", ingredients);
 
         JsonArray results = new JsonArray();
         for (RecipeDraft.ResultEntry entry : draft.results) {
             if (entry.item == null || entry.item.isEmpty()) {
+                continue;
+            }
+            if (entry.item.isFluid()) {
+                results.add(fluidResultJson(entry.item)); // a fluid result carries an amount, not a count/chance
                 continue;
             }
             JsonObject result = new JsonObject();
@@ -62,13 +67,16 @@ public final class CreateRecipeCompiler {
 
         if (json.has("ingredients") && json.get("ingredients").isJsonArray()) {
             for (JsonElement element : json.getAsJsonArray("ingredients")) {
-                if (element.isJsonObject()) {
-                    JsonObject object = element.getAsJsonObject();
-                    if (object.has("fluid") || object.has("fluidTag")) {
-                        continue; // fluid ingredient, not editable yet
-                    }
-                    draft.inputs.add(IngredientValue.fromIngredientJson(element));
+                if (!element.isJsonObject()) {
+                    continue;
                 }
+                JsonObject object = element.getAsJsonObject();
+                IngredientValue fluid = readFluidIngredient(object);
+                if (fluid != null) {
+                    draft.inputs.add(fluid);
+                    continue;
+                }
+                draft.inputs.add(IngredientValue.fromIngredientJson(element));
             }
         }
         if (json.has("results") && json.get("results").isJsonArray()) {
@@ -77,9 +85,14 @@ public final class CreateRecipeCompiler {
                     continue;
                 }
                 JsonObject object = element.getAsJsonObject();
+                IngredientValue fluid = readFluidResult(object);
+                if (fluid != null) {
+                    draft.results.add(new RecipeDraft.ResultEntry(fluid, 1, 1.0f));
+                    continue;
+                }
                 String idKey = object.has("id") ? "id" : (object.has("item") ? "item" : null);
                 if (idKey == null) {
-                    continue; // fluid result (no item id), not editable yet
+                    continue; // neither an item nor a fluid we can show
                 }
                 IngredientValue item = IngredientValue.item(ResourceLocation.tryParse(object.get(idKey).getAsString()));
                 int count = object.has("count") ? object.get("count").getAsInt() : 1;
@@ -90,6 +103,56 @@ public final class CreateRecipeCompiler {
         draft.processingTime = readInt(json, "processing_time", "processingTime");
         draft.heat = readString(json, "heat_requirement", "heatRequirement", "none");
         return draft;
+    }
+
+    /**
+     * Create 6.x takes a fluid ingredient as NeoForge's sized fluid ingredient:
+     * {@code {"amount": mB, "ingredient": {"fluid": id}}}.
+     */
+    private static JsonObject fluidIngredientJson(IngredientValue value) {
+        JsonObject fluid = new JsonObject();
+        fluid.addProperty("fluid", value.id().toString());
+        JsonObject json = new JsonObject();
+        json.addProperty("amount", value.amount());
+        json.add("ingredient", fluid);
+        return json;
+    }
+
+    /** A fluid result is a fluid stack: {@code {"id": id, "amount": mB}}. */
+    private static JsonObject fluidResultJson(IngredientValue value) {
+        JsonObject json = new JsonObject();
+        json.addProperty("id", value.id().toString());
+        json.addProperty("amount", value.amount());
+        return json;
+    }
+
+    /** Reads a sized fluid ingredient, or null when the entry is not a fluid. */
+    private static IngredientValue readFluidIngredient(JsonObject object) {
+        if (!object.has("ingredient") || !object.get("ingredient").isJsonObject()) {
+            return null;
+        }
+        JsonObject inner = object.getAsJsonObject("ingredient");
+        if (!inner.has("fluid")) {
+            return null; // a fluid tag has no single fluid to show; not editable yet
+        }
+        ResourceLocation fluid = ResourceLocation.tryParse(inner.get("fluid").getAsString());
+        if (fluid == null) {
+            return null;
+        }
+        int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
+        return IngredientValue.fluid(fluid, amount);
+    }
+
+    /**
+     * Reads a fluid stack result, or null when the entry is not a fluid. Item and fluid results both carry
+     * an {@code id}, so the amount field is what tells them apart — an item result counts with {@code count}.
+     */
+    private static IngredientValue readFluidResult(JsonObject object) {
+        if (!object.has("id") || !object.has("amount")) {
+            return null;
+        }
+        ResourceLocation fluid = ResourceLocation.tryParse(object.get("id").getAsString());
+        return fluid == null ? null : IngredientValue.fluid(fluid, object.get("amount").getAsInt());
     }
 
     private static int readInt(JsonObject json, String key, String legacyKey) {
