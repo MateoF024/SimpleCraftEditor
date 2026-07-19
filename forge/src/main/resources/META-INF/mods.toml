@@ -11,7 +11,7 @@ authors = "MateoF24"
 description = '''
 In-game editor for vanilla and modded crafting recipes.
 '''
-#logoFile = "icon.png"
+logoFile = "assets/sce/icon.png"
 
 [[dependencies.sce]]
 modId = "forge"

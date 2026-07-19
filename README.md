@@ -1,46 +1,47 @@
-# Simple Craft Editor
+<div align="center">
 
-In-game editor for vanilla and modded crafting recipes.
+# Simple Craft Editor 🛠️
 
-> **License:** All Rights Reserved. See [`LICENSE.txt`](LICENSE.txt).
+An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existing ones, or build brand-new ones on the fly — no datapacks, no restarts. Every change applies live and shows up in JEI and EMI right away.
 
-## Supported targets
+[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1-dbd0b4?style=for-the-badge)](https://fabricmc.net/) [![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-f16a20?style=for-the-badge)](https://neoforged.net/) [![Forge](https://img.shields.io/badge/Forge-1.20.1-e04e14?style=for-the-badge)](https://minecraftforge.net/) [![Environment](https://img.shields.io/badge/Env-Client%20%26%20Server-4a90d9?style=for-the-badge)](https://github.com/MateoF024/SimpleCraftEditor) [![Issues](https://img.shields.io/badge/Report-Issues-red?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MateoF024/SimpleCraftEditor/issues)
 
-| Minecraft | Loaders            | Source tree | Architectury | Java |
-|-----------|--------------------|-------------|--------------|------|
-| 1.20.1    | Forge + Fabric     | repo root   | 9.x          | 17   |
-| 1.21.1    | NeoForge + Fabric  | `v1.21.1/`  | 13.x         | 21   |
+</div>
 
-Each Minecraft version is built independently and produces its own set of jars, so
-`1.21.x` compatibility is incidental — development targets `1.20.1` and `1.21.1` in isolation.
+***
 
-## Project layout
+## ✨ Features
 
-The build is driven by the `minecraft_version` property in `gradle.properties`.
-`settings.gradle` maps that value to the matching source tree:
+*   **Disable any recipe** — switch off vanilla or modded recipes. They disappear from crafting *and* from JEI/EMI, and you can restore them whenever you like.
+*   **Edit existing recipes** — change ingredients, results, output counts, cooking time and experience, all from a visual editor.
+*   **Create new recipes** — shaped and shapeless crafting, smelting, blasting, smoking, campfire cooking, and stonecutting.
+*   **Item tags as ingredients** — use a whole tag (like "any plank") in place of a single item.
+*   **Create support** — edit and build Create's processing recipes (mixing, crushing, pressing, and more), including output chances and heat requirements, wherever Create is available.
+*   **Raw JSON fallback** — any recipe type the visual editor doesn't cover can still be edited as raw JSON, so nothing is off-limits.
+*   **Works with JEI & EMI** — drag items straight from the recipe viewer onto the editor slots, or hover an item and press a key to jump right to its recipe.
+*   **Live and synced** — edits apply instantly for everyone on the server, refresh JEI/EMI automatically, and persist across restarts.
+*   **Operator-only** — only operators (or single-player with cheats) can edit, so regular players can't tamper with the pack.
 
-- `1.20.x` → root-level `common/`, `fabric/`, `forge/` (legacy Architectury / Java 17).
-- `1.21.1` → `v1.21.1/common`, `v1.21.1/fabric`, `v1.21.1/neoforge` (Architectury 13.x / Java 21).
+***
 
-Loader-agnostic logic lives in each tree's `common` module; keep as much code there as possible.
+## 🎮 How to Use
 
-## Building
+*   Press **K** to open the editor (operators only).
+*   From there you can start a new recipe, or manage your disabled and custom recipes.
+*   While a recipe viewer is open, hover any item in **JEI** or **EMI** and press **K** to jump straight to its recipe.
 
-Set the target in `gradle.properties` (or override on the command line) and run `build`:
+***
 
-```bash
-# 1.20.1 (Forge + Fabric) — the default in gradle.properties
-./gradlew build
+## 🌐 Localization
 
-# 1.21.1 (NeoForge + Fabric)
-./gradlew build -Pminecraft_version=1.21.1
-```
+Available in **English** and **Spanish**.
 
-Remapped loader jars are collected in `build/libs/`, named
-`SimpleCraftEditor-<loader>-<mcversion>-<modversion>.jar`.
+***
 
-## Adding a new Minecraft version
+## 💬 Links
 
-1. Create a `v<version>/` tree with `common`, `fabric`, and the appropriate Forge/NeoForge module.
-2. Add the version → directory mapping to `treeByVersion` in `settings.gradle`.
-3. Add its dependency versions to `gradle.properties`.
+[![Issues](https://img.shields.io/badge/Report-Issues-red?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MateoF024/SimpleCraftEditor/issues)
+
+***
+
+Created by **MateoF024** — All rights reserved.
