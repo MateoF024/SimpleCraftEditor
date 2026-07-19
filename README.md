@@ -29,7 +29,7 @@ An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existin
 *   Press **K** to open the editor (operators only).
 
 
-![img.png](img.png)
+![img.png](docs/img.png)
 *   From there you can start a new recipe, or manage your disabled and custom recipes.
 *   While a recipe viewer is open, hover any item in **JEI** or **EMI** and press **K** to jump straight to its recipe.
 
