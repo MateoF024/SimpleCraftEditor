@@ -2,7 +2,7 @@
 
 # Simple Craft Editor 🛠️
 
-An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existing ones, or build brand-new ones on the fly — no datapacks, no restarts. Every change applies live and shows up in JEI and EMI right away.
+An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existing ones, or build brand-new ones on the fly — no datapacks, no restarts. Changes take effect immediately; a quick reload (F3 + T) refreshes what JEI and EMI display.
 
 [![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1-dbd0b4?style=for-the-badge)](https://fabricmc.net/) [![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-f16a20?style=for-the-badge)](https://neoforged.net/) [![Forge](https://img.shields.io/badge/Forge-1.20.1-e04e14?style=for-the-badge)](https://minecraftforge.net/) [![Environment](https://img.shields.io/badge/Env-Client%20%26%20Server-4a90d9?style=for-the-badge)](https://github.com/MateoF024/SimpleCraftEditor) [![Issues](https://img.shields.io/badge/Report-Issues-red?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MateoF024/SimpleCraftEditor/issues)
 
@@ -12,14 +12,14 @@ An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existin
 
 ## ✨ Features
 
-*   **Disable any recipe** — switch off vanilla or modded recipes. They disappear from crafting *and* from JEI/EMI, and you can restore them whenever you like.
+*   **Disable any recipe** — switch off vanilla or modded recipes. They can no longer be crafted (and leave the JEI/EMI list after a reload), and you can restore them whenever you like.
 *   **Edit existing recipes** — change ingredients, results, output counts, cooking time and experience, all from a visual editor.
 *   **Create new recipes** — shaped and shapeless crafting, smelting, blasting, smoking, campfire cooking, and stonecutting.
 *   **Item tags as ingredients** — use a whole tag (like "any plank") in place of a single item.
 *   **Create support** — edit and build Create's processing recipes (mixing, crushing, pressing, and more), including output chances and heat requirements, wherever Create is available.
 *   **Raw JSON fallback** — any recipe type the visual editor doesn't cover can still be edited as raw JSON, so nothing is off-limits.
 *   **Works with JEI & EMI** — drag items straight from the recipe viewer onto the editor slots, or hover an item and press a key to jump right to its recipe.
-*   **Live and synced** — edits apply instantly for everyone on the server, refresh JEI/EMI automatically, and persist across restarts.
+*   **Live and synced** — edits apply instantly for everyone on the server and persist across restarts. A quick reload (F3 + T) refreshes what JEI and EMI show.
 *   **Operator-only** — only operators (or single-player with cheats) can edit, so regular players can't tamper with the pack.
 
 ***
