@@ -84,10 +84,16 @@ public final class IngredientValue {
         return kind == Kind.EMPTY || id == null;
     }
 
-    /** Serializes to a vanilla ingredient object: {@code {"item": id}} or {@code {"tag": id}}. */
+    /**
+     * Serializes to a vanilla ingredient object: {@code {"item": id}} or {@code {"tag": id}}. An empty
+     * value has no id to write, so it falls back to air rather than throwing — callers that care filter
+     * empties out first, and the server rejects the recipe anyway.
+     */
     public JsonObject toIngredientJson() {
         JsonObject json = new JsonObject();
-        if (kind == Kind.TAG) {
+        if (isEmpty()) {
+            json.addProperty("item", "minecraft:air");
+        } else if (kind == Kind.TAG) {
             json.addProperty("tag", id.toString());
         } else {
             json.addProperty("item", id.toString());

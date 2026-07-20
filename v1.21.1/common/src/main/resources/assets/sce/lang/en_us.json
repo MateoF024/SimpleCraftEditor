@@ -95,6 +95,8 @@
   "sce.status.fluid_tag_output": "A result needs one fluid, not a tag.",
   "sce.status.click_slot_first": "Click a recipe slot first.",
   "sce.status.invalid_id": "Invalid recipe id.",
+  "sce.status.sequence_incomplete": "Needs a base item, a transitional item and a result.",
+  "sce.status.sequence_no_steps": "Add at least one step.",
   "sce.status.saving": "Saving %s…",
   "sce.status.saved": "Saved %s.",
   "sce.status.save_failed": "Could not save %s — invalid recipe.",

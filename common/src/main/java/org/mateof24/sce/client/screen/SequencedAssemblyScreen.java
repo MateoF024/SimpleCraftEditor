@@ -131,6 +131,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save())
                 .bounds(left, height - 26, 100, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable())
+                .bounds(left + 105, height - 26, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
                 .bounds(left + 210, height - 26, 100, 20).build());
     }
@@ -209,9 +211,28 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             status = Component.translatable("sce.status.invalid_id");
             return;
         }
+        // Say what is missing instead of sending a recipe the server can only reject.
+        if (draft.input(0).isEmpty() || draft.transitionalItem.isEmpty() || firstResult().item.isEmpty()) {
+            status = Component.translatable("sce.status.sequence_incomplete");
+            return;
+        }
+        if (draft.sequence.isEmpty()) {
+            status = Component.translatable("sce.status.sequence_no_steps");
+            return;
+        }
         JsonObject json = SequencedAssemblyCompiler.toJson(draft);
         SceNetworking.sendSave(id, json.toString());
         status = Component.translatable("sce.status.saving", id.toString());
+    }
+
+    private void disable() {
+        ResourceLocation id = ResourceLocation.tryParse(idValue);
+        if (id == null) {
+            status = Component.translatable("sce.status.invalid_id");
+            return;
+        }
+        SceNetworking.sendSimple(SceNetworking.DISABLE, id);
+        status = Component.translatable("sce.status.requested_disable", id.toString());
     }
 
     @Override

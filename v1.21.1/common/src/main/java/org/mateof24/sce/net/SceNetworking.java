@@ -167,19 +167,19 @@ public final class SceNetworking {
         ResourceLocation editId = idString.isEmpty() ? null : ResourceLocation.tryParse(idString);
         String editJson = "";
         int mode = Math.max(0, requestedMode);
-        if (editId != null) {
+        // Only an explicit load (a negative mode) pulls in a stored recipe. Changing type must not quietly
+        // adopt whatever recipe happens to share the id sitting in the box.
+        if (editId != null && requestedMode < 0) {
             JsonObject json = RecipeStateManager.INSTANCE.editorJson(editId);
             if (json != null) {
                 editJson = json.toString();
-                if (requestedMode < 0) {
-                    RecipeDraft draft = RecipeCompiler.fromJson(editId, json);
-                    if (draft == null) {
-                        // No typed editor for this recipe type: fall back to the raw JSON editor.
-                        sendOpenRaw(player, editId, editJson);
-                        return;
-                    }
-                    mode = RecipeModes.indexOf(draft);
+                RecipeDraft draft = RecipeCompiler.fromJson(editId, json);
+                if (draft == null) {
+                    // No typed editor for this recipe type: fall back to the raw JSON editor.
+                    sendOpenRaw(player, editId, editJson);
+                    return;
                 }
+                mode = RecipeModes.indexOf(draft);
             }
         }
         mode = RecipeModes.sanitize(mode);
