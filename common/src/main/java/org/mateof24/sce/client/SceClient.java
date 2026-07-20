@@ -84,6 +84,9 @@ public final class SceClient {
             minecraft.player.displayClientMessage(Component.translatable(
                     "sce.msg.recipe_cycle", cycleIndex + 1, recipes.size(), picked.toString()), false);
         }
+        // Keep the pointer where it is: stepping through recipes re-opens the editor each time, and the
+        // menu transition would otherwise recenter it between presses.
+        RecipeEditorScreen.rememberCursor();
         SceNetworking.sendOpenEditor(picked.toString(), -1);
         return true;
     }

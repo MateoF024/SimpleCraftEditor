@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -239,10 +240,21 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
-    /** Re-open the editor for a new type/recipe, preserving the cursor position across the transition. */
-    private void reopen(int newMode) {
+    /**
+     * Remembers where the pointer is so the editor's next open puts it back instead of letting the menu
+     * transition recenter it. Call this before asking the server to open the editor — from the type/load
+     * buttons here, and from the editor key, which would otherwise fling the pointer to the middle of the
+     * screen on every press while stepping through an item's recipes.
+     */
+    public static void rememberCursor() {
+        Minecraft minecraft = Minecraft.getInstance();
         pendingCursorX = minecraft.mouseHandler.xpos();
         pendingCursorY = minecraft.mouseHandler.ypos();
+    }
+
+    /** Re-open the editor for a new type/recipe, preserving the cursor position across the transition. */
+    private void reopen(int newMode) {
+        rememberCursor();
         SceNetworking.sendOpenEditor(idValue, newMode);
     }
 
