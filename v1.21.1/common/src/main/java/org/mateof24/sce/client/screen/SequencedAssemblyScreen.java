@@ -37,11 +37,12 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private static final String[] STEP_TYPES = {
             "create:deploying", "create:pressing", "create:cutting", "create:filling"};
 
-    private static final int ROW_ID = 34;
-    private static final int ROW_PARTS = 66;
-    private static final int ROW_RESULT = 98;
-    private static final int STEPS_HEADER = 126;
-    private static final int STEP_TOP = 142;
+    private static final int ROW_TYPE = 28;
+    private static final int ROW_ID = 60;
+    private static final int ROW_PARTS = 92;
+    private static final int ROW_RESULT = 124;
+    private static final int STEPS_HEADER = 152;
+    private static final int STEP_TOP = 176;
     private static final int STEP_HEIGHT = 22;
 
     private final RecipeDraft draft;
@@ -84,7 +85,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         addRenderableWidget(Button.builder(Component.translatable("sce.button.type",
                         Component.translatable(RecipeModes.labelKey(sequenceMode()))), b ->
                         SceNetworking.sendOpenEditor(idValue, RecipeModes.nextAvailable(sequenceMode())))
-                .bounds(left + 150, 12, 160, 16).build());
+                .bounds(left, ROW_TYPE, 310, 16).build());
 
         textBox(left, ROW_ID, 250, idValue, s -> idValue = s, "sce.hint.id", false);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b ->
@@ -149,7 +150,6 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         EditBox box = new EditBox(font, x, y, w, 16, Component.translatable(hintKey));
         box.setMaxLength(200);
         box.setValue(value);
-        box.setHint(Component.translatable(hintKey));
         box.setResponder(onChange);
         addRenderableWidget(box);
         if (completesItems) {
@@ -216,7 +216,24 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        return suggestions.mouseClicked(mouseX, mouseY) || super.mouseClicked(mouseX, mouseY, button);
+        if (suggestions.mouseClicked(mouseX, mouseY)) {
+            return true;
+        }
+        int left = width / 2 - 155;
+        if (button == 1 && mouseX >= left && mouseX < left + 310
+                && mouseY >= ROW_TYPE && mouseY < ROW_TYPE + 16) {
+            playClick();
+            SceNetworking.sendOpenEditor(idValue, RecipeModes.previousAvailable(sequenceMode()));
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /** Buttons click when pressed; a right-click handled by hand has to say so itself. */
+    private void playClick() {
+        minecraft.getSoundManager().play(
+                net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
+                        net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
     }
 
     @Override
@@ -249,7 +266,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         label(graphics, "sce.sequence.label_loops", left + 272, ROW_PARTS);
         label(graphics, "sce.sequence.label_result", left, ROW_RESULT);
         label(graphics, "sce.sequence.label_count", left + 256, ROW_RESULT);
-        graphics.drawString(font, Component.translatable("sce.sequence.steps"), left, STEPS_HEADER, 0xC0C0C0);
+        graphics.drawString(font, Component.translatable("sce.sequence.steps"), left, STEPS_HEADER, 0xFFFFFF);
 
         int visible = visibleSteps();
         for (int row = 0; row < visible && scroll + row < draft.sequence.size(); row++) {
@@ -264,7 +281,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     /** A caption sat just above its field, so an empty form still says what each box is for. */
     private void label(GuiGraphics graphics, String key, int x, int fieldY) {
-        graphics.drawString(font, Component.translatable(key), x, fieldY - 10, 0x909090, false);
+        graphics.drawString(font, Component.translatable(key), x, fieldY - 10, 0xFFFFFF, true);
     }
 
     /** Called from the network layer with the server's verdict on a save request. */

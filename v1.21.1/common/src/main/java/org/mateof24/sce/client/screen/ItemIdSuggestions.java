@@ -99,10 +99,15 @@ public final class ItemIdSuggestions {
         int x = target.getX();
         int top = popupTop();
         int w = width();
+        // Text queued in the same batch does not respect draw order, so lift the popup above the fields
+        // it overlaps rather than relying on being drawn last.
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 400.0F);
         graphics.fill(x, top, x + w, top + matches.size() * ROW_HEIGHT, 0xF0100010);
         for (int i = 0; i < matches.size(); i++) {
-            graphics.drawString(font, matches.get(i), x + 2, top + i * ROW_HEIGHT + 2, 0xC0C0C0, false);
+            graphics.drawString(font, matches.get(i), x + 2, top + i * ROW_HEIGHT + 2, 0xE0E0E0, false);
         }
+        graphics.pose().popPose();
     }
 
     private int popupTop() {

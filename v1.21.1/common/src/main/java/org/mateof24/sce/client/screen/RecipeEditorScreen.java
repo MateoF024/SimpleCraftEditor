@@ -302,6 +302,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         // overshooting the type you wanted does not mean cycling all the way round again.
         if (button == 1 && mouseX >= leftPos + 45 && mouseX < leftPos + 195
                 && mouseY >= topPos + 4 && mouseY < topPos + 20) {
+            // Buttons click when pressed; a right-click handled by hand has to say so itself.
+            minecraft.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
+                    net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
             reopen(RecipeModes.previousAvailable(mode));
             return true;
         }
