@@ -16,7 +16,7 @@ import net.minecraft.resources.ResourceLocation;
  * {@link CreateRecipeCompiler} rather than here.
  */
 public final class IngredientValue {
-    public enum Kind {EMPTY, ITEM, TAG, FLUID}
+    public enum Kind {EMPTY, ITEM, TAG, FLUID, FLUID_TAG}
 
     /** A bucket in millibuckets — the unit Create counts fluids in. */
     public static final int BUCKET = 1000;
@@ -50,6 +50,14 @@ public final class IngredientValue {
         return new IngredientValue(Kind.FLUID, fluid, Math.max(1, amount));
     }
 
+    /**
+     * A fluid ingredient matching any fluid in {@code tag}, of {@code amount} millibuckets. Only valid as an
+     * ingredient — a result has to name one concrete fluid.
+     */
+    public static IngredientValue fluidTag(ResourceLocation tag, int amount) {
+        return new IngredientValue(Kind.FLUID_TAG, tag, Math.max(1, amount));
+    }
+
     public Kind kind() {
         return kind;
     }
@@ -63,8 +71,13 @@ public final class IngredientValue {
         return amount;
     }
 
+    /** True for a fluid quantity, whether it names one fluid or a whole tag of them. */
     public boolean isFluid() {
-        return kind == Kind.FLUID && id != null;
+        return (kind == Kind.FLUID || kind == Kind.FLUID_TAG) && id != null;
+    }
+
+    public boolean isFluidTag() {
+        return kind == Kind.FLUID_TAG && id != null;
     }
 
     public boolean isEmpty() {

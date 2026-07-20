@@ -324,7 +324,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return;
         }
         if (current != null && current.isFluid()) {
-            fluidValue = current.id().toString();
+            fluidValue = (current.isFluidTag() ? "#" : "") + current.id();
             fluidAmountValue = Integer.toString(current.amount());
         } else {
             fluidValue = "";
@@ -354,18 +354,28 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     /** Puts a fluid, with its millibucket amount, into whichever recipe slot was picked last. */
     private void applyFluid() {
-        ResourceLocation fluid = ResourceLocation.tryParse(fluidValue);
+        // A leading '#' means a fluid tag, matching how tags are written everywhere else in Minecraft.
+        String raw = fluidValue.trim();
+        boolean tagged = raw.startsWith("#");
+        ResourceLocation fluid = ResourceLocation.tryParse(tagged ? raw.substring(1) : raw);
         if (fluid == null) {
             status = Component.translatable("sce.status.invalid_fluid");
             return;
         }
         int amount = Math.max(1, parseInt(fluidAmountValue, IngredientValue.BUCKET));
+        IngredientValue value = tagged
+                ? IngredientValue.fluidTag(fluid, amount)
+                : IngredientValue.fluid(fluid, amount);
         if (selectedIsOutput && selectedOutput >= 0) {
+            if (tagged) {
+                status = Component.translatable("sce.status.fluid_tag_output");
+                return;
+            }
             if (!menu.outputItem(selectedOutput).isEmpty()) {
                 status = Component.translatable("sce.status.clear_slot_first");
                 return;
             }
-            overlayOut[selectedOutput] = IngredientValue.fluid(fluid, amount);
+            overlayOut[selectedOutput] = value;
             return;
         }
         if (selectedInput < 0) {
@@ -376,7 +386,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             status = Component.translatable("sce.status.clear_slot_first");
             return;
         }
-        overlay[selectedInput] = IngredientValue.fluid(fluid, amount);
+        overlay[selectedInput] = value;
     }
 
     private void clearSelected() {
@@ -583,7 +593,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55, false);
         } else if (value.isFluid()) {
             // A fluid is a quantity rather than an item, so mark the slot and show how much it is.
-            graphics.drawString(font, "~", x + 1, y + 1, 0x55AAFF, false);
+            graphics.drawString(font, value.isFluidTag() ? "#" : "~", x + 1, y + 1, 0x55AAFF, false);
             graphics.pose().pushPose();
             graphics.pose().translate(x, y + 10, 200.0F);
             graphics.pose().scale(0.5F, 0.5F, 1.0F);
@@ -661,8 +671,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (value.kind() == IngredientValue.Kind.TAG) {
             graphics.renderTooltip(font, Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN), mouseX, mouseY);
         } else if (value.isFluid()) {
-            graphics.renderTooltip(font, Component.literal(value.id() + " (" + value.amount() + " mB)")
-                    .withStyle(ChatFormatting.AQUA), mouseX, mouseY);
+            graphics.renderTooltip(font, Component.literal((value.isFluidTag() ? "#" : "") + value.id()
+                    + " (" + value.amount() + " mB)").withStyle(ChatFormatting.AQUA), mouseX, mouseY);
         } else {
             ItemStack stack = stackFor(value);
             graphics.renderTooltip(font, getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);

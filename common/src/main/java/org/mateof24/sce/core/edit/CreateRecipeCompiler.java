@@ -32,6 +32,9 @@ public final class CreateRecipeCompiler {
             if (entry.item == null || entry.item.isEmpty()) {
                 continue;
             }
+            if (entry.item.isFluidTag()) {
+                continue; // a result has to name one concrete fluid, so a tag cannot be written here
+            }
             if (entry.item.isFluid()) {
                 results.add(fluidJson(entry.item)); // a fluid result carries an amount, not a count/chance
                 continue;
@@ -83,9 +86,6 @@ public final class CreateRecipeCompiler {
                     draft.inputs.add(fluid);
                     continue;
                 }
-                if (object.has("fluidTag")) {
-                    continue; // a fluid tag has no single fluid to show; not editable yet
-                }
                 draft.inputs.add(IngredientValue.fromIngredientJson(element));
             }
         }
@@ -114,24 +114,28 @@ public final class CreateRecipeCompiler {
         return draft;
     }
 
-    /** Create 1.20.1 writes a fluid inline as {@code {"fluid": id, "amount": mB}}. */
+    /**
+     * Create 1.20.1 writes a fluid inline as {@code {"fluid": id, "amount": mB}}, and a whole tag of fluids
+     * as {@code {"fluidTag": id, "amount": mB}}.
+     */
     private static JsonObject fluidJson(IngredientValue value) {
         JsonObject json = new JsonObject();
-        json.addProperty("fluid", value.id().toString());
+        json.addProperty(value.isFluidTag() ? "fluidTag" : "fluid", value.id().toString());
         json.addProperty("amount", value.amount());
         return json;
     }
 
-    /** Reads an inline fluid entry, or null if this entry is not a fluid. */
+    /** Reads an inline fluid entry, single or tagged, or null if this entry is not a fluid. */
     private static IngredientValue readFluid(JsonObject object) {
-        if (!object.has("fluid")) {
+        boolean tagged = object.has("fluidTag");
+        if (!tagged && !object.has("fluid")) {
             return null;
         }
-        ResourceLocation fluid = ResourceLocation.tryParse(object.get("fluid").getAsString());
+        ResourceLocation fluid = ResourceLocation.tryParse(object.get(tagged ? "fluidTag" : "fluid").getAsString());
         if (fluid == null) {
             return null;
         }
         int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
-        return IngredientValue.fluid(fluid, amount);
+        return tagged ? IngredientValue.fluidTag(fluid, amount) : IngredientValue.fluid(fluid, amount);
     }
 }

@@ -32,6 +32,9 @@ public final class CreateRecipeCompiler {
             if (entry.item == null || entry.item.isEmpty()) {
                 continue;
             }
+            if (entry.item.isFluidTag()) {
+                continue; // a result has to name one concrete fluid, so a tag cannot be written here
+            }
             if (entry.item.isFluid()) {
                 results.add(fluidResultJson(entry.item)); // a fluid result carries an amount, not a count/chance
                 continue;
@@ -118,7 +121,8 @@ public final class CreateRecipeCompiler {
      */
     private static JsonObject fluidIngredientJson(IngredientValue value) {
         JsonObject fluid = new JsonObject();
-        fluid.addProperty("fluid", value.id().toString());
+        // A whole tag of fluids is the same wrapper with a tag-shaped inner ingredient.
+        fluid.addProperty(value.isFluidTag() ? "tag" : "fluid", value.id().toString());
         JsonObject json = new JsonObject();
         json.addProperty("amount", value.amount());
         json.add("ingredient", fluid);
@@ -139,15 +143,16 @@ public final class CreateRecipeCompiler {
             return null;
         }
         JsonObject inner = object.getAsJsonObject("ingredient");
-        if (!inner.has("fluid")) {
-            return null; // a fluid tag has no single fluid to show; not editable yet
+        boolean tagged = inner.has("tag");
+        if (!tagged && !inner.has("fluid")) {
+            return null;
         }
-        ResourceLocation fluid = ResourceLocation.tryParse(inner.get("fluid").getAsString());
+        ResourceLocation fluid = ResourceLocation.tryParse(inner.get(tagged ? "tag" : "fluid").getAsString());
         if (fluid == null) {
             return null;
         }
         int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
-        return IngredientValue.fluid(fluid, amount);
+        return tagged ? IngredientValue.fluidTag(fluid, amount) : IngredientValue.fluid(fluid, amount);
     }
 
     /**
