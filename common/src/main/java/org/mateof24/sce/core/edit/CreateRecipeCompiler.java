@@ -115,13 +115,14 @@ public final class CreateRecipeCompiler {
     }
 
     /**
-     * Create 1.20.1 writes a fluid inline as {@code {"fluid": id, "amount": mB}}, and a whole tag of fluids
-     * as {@code {"fluidTag": id, "amount": mB}}.
+     * Create 1.20.1 writes a fluid inline as {@code {"fluid": id, "amount": n}}, and a whole tag of fluids
+     * as {@code {"fluidTag": id, "amount": n}}. The amount is in the platform's own fluid unit, not always
+     * millibuckets — see {@link IngredientValue#toPlatformAmount(int)}.
      */
     private static JsonObject fluidJson(IngredientValue value) {
         JsonObject json = new JsonObject();
         json.addProperty(value.isFluidTag() ? "fluidTag" : "fluid", value.id().toString());
-        json.addProperty("amount", value.amount());
+        json.addProperty("amount", IngredientValue.toPlatformAmount(value.amount()));
         return json;
     }
 
@@ -135,7 +136,9 @@ public final class CreateRecipeCompiler {
         if (fluid == null) {
             return null;
         }
-        int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
+        int amount = object.has("amount")
+                ? IngredientValue.fromPlatformAmount(object.get("amount").getAsLong())
+                : IngredientValue.BUCKET;
         return tagged ? IngredientValue.fluidTag(fluid, amount) : IngredientValue.fluid(fluid, amount);
     }
 }

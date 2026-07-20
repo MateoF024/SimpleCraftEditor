@@ -3,6 +3,7 @@ package org.mateof24.sce.core.edit;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.architectury.platform.Platform;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -116,16 +117,26 @@ public final class CreateRecipeCompiler {
     }
 
     /**
-     * Create 6.x takes a fluid ingredient as NeoForge's sized fluid ingredient:
-     * {@code {"amount": mB, "ingredient": {"fluid": id}}}.
+     * On 1.21.1 Create dropped its own fluid ingredient for the platform's. NeoForge's is written flat,
+     * with the kind named by {@code type} — exactly as Create's own recipes ship it:
+     * {@code {"type": "neoforge:single", "amount": n, "fluid": id}}, or {@code neoforge:tag} with a
+     * {@code tag} for a whole tag of fluids. The nested {@code ingredient} wrapper this used to write is
+     * not a shape any of those codecs accept.
+     *
+     * <p>Fabric has no such registry, so Create Fabric keeps the flat 1.20.1 spelling with no {@code type}.
+     * That branch is inferred, not verified: there is no Create Fabric 1.21.1 build to check against.
      */
     private static JsonObject fluidIngredientJson(IngredientValue value) {
-        JsonObject fluid = new JsonObject();
-        // A whole tag of fluids is the same wrapper with a tag-shaped inner ingredient.
-        fluid.addProperty(value.isFluidTag() ? "tag" : "fluid", value.id().toString());
         JsonObject json = new JsonObject();
-        json.addProperty("amount", value.amount());
-        json.add("ingredient", fluid);
+        boolean tagged = value.isFluidTag();
+        if (Platform.isFabric()) {
+            json.addProperty(tagged ? "fluidTag" : "fluid", value.id().toString());
+            json.addProperty("amount", IngredientValue.toPlatformAmount(value.amount()));
+            return json;
+        }
+        json.addProperty("type", tagged ? "neoforge:tag" : "neoforge:single");
+        json.addProperty("amount", IngredientValue.toPlatformAmount(value.amount()));
+        json.addProperty(tagged ? "tag" : "fluid", value.id().toString());
         return json;
     }
 
@@ -133,26 +144,35 @@ public final class CreateRecipeCompiler {
     private static JsonObject fluidResultJson(IngredientValue value) {
         JsonObject json = new JsonObject();
         json.addProperty("id", value.id().toString());
-        json.addProperty("amount", value.amount());
+        json.addProperty("amount", IngredientValue.toPlatformAmount(value.amount()));
         return json;
     }
 
-    /** Reads a sized fluid ingredient, or null when the entry is not a fluid. */
+    /**
+     * Reads a fluid ingredient, or null when the entry is not a fluid.
+     *
+     * <p>Telling a fluid tag from an item tag is the delicate part: both are written as {@code tag}, and an
+     * item tag ingredient may even carry a {@code type} of its own ({@code neoforge:block_tag}). What
+     * separates them is {@code amount} — only a fluid is measured. Reading is kept looser than writing so a
+     * recipe authored on either loader still loads.
+     */
     private static IngredientValue readFluidIngredient(JsonObject object) {
-        if (!object.has("ingredient") || !object.get("ingredient").isJsonObject()) {
+        String key = object.has("fluid") ? "fluid"
+                : object.has("fluidTag") ? "fluidTag"
+                : (object.has("tag") && object.has("amount")) ? "tag" : null;
+        if (key == null) {
             return null;
         }
-        JsonObject inner = object.getAsJsonObject("ingredient");
-        boolean tagged = inner.has("tag");
-        if (!tagged && !inner.has("fluid")) {
-            return null;
-        }
-        ResourceLocation fluid = ResourceLocation.tryParse(inner.get(tagged ? "tag" : "fluid").getAsString());
+        ResourceLocation fluid = ResourceLocation.tryParse(object.get(key).getAsString());
         if (fluid == null) {
             return null;
         }
-        int amount = object.has("amount") ? object.get("amount").getAsInt() : IngredientValue.BUCKET;
-        return tagged ? IngredientValue.fluidTag(fluid, amount) : IngredientValue.fluid(fluid, amount);
+        int amount = object.has("amount")
+                ? IngredientValue.fromPlatformAmount(object.get("amount").getAsLong())
+                : IngredientValue.BUCKET;
+        return key.equals("fluid")
+                ? IngredientValue.fluid(fluid, amount)
+                : IngredientValue.fluidTag(fluid, amount);
     }
 
     /**
@@ -164,7 +184,8 @@ public final class CreateRecipeCompiler {
             return null;
         }
         ResourceLocation fluid = ResourceLocation.tryParse(object.get("id").getAsString());
-        return fluid == null ? null : IngredientValue.fluid(fluid, object.get("amount").getAsInt());
+        return fluid == null ? null
+                : IngredientValue.fluid(fluid, IngredientValue.fromPlatformAmount(object.get("amount").getAsLong()));
     }
 
     private static int readInt(JsonObject json, String key, String legacyKey) {

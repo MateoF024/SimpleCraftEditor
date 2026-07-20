@@ -3,6 +3,7 @@ package org.mateof24.sce.core.edit;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.architectury.hooks.fluid.FluidStackHooks;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -18,8 +19,32 @@ import net.minecraft.resources.ResourceLocation;
 public final class IngredientValue {
     public enum Kind {EMPTY, ITEM, TAG, FLUID, FLUID_TAG}
 
-    /** A bucket in millibuckets — the unit Create counts fluids in. */
+    /** A bucket in millibuckets — the unit this editor counts fluids in, everywhere except the JSON. */
     public static final int BUCKET = 1000;
+
+    /**
+     * Converts a millibucket amount into the unit the recipe file is written in. Forge and NeoForge count
+     * millibuckets, Fabric counts droplets at 81000 to the bucket, and Create writes whichever its platform
+     * uses — the same recipe ships as {@code 250} on Forge and {@code 27000} on Fabric. Architectury already
+     * knows the platform's bucket, so the ratio comes from there rather than from a hardcoded loader check.
+     */
+    public static int toPlatformAmount(int millibuckets) {
+        return scale(millibuckets, FluidStackHooks.bucketAmount(), BUCKET);
+    }
+
+    /** The inverse, for reading an amount back out of a recipe file. */
+    public static int fromPlatformAmount(long platformAmount) {
+        return scale(platformAmount, BUCKET, FluidStackHooks.bucketAmount());
+    }
+
+    /** Scales in long arithmetic: droplet amounts overflow an int well before the editor's limits do. */
+    private static int scale(long amount, long numerator, long denominator) {
+        if (denominator <= 0) {
+            return (int) Math.max(1, Math.min(Integer.MAX_VALUE, amount));
+        }
+        long scaled = amount * numerator / denominator;
+        return (int) Math.max(1, Math.min(Integer.MAX_VALUE, scaled));
+    }
 
     private static final IngredientValue EMPTY = new IngredientValue(Kind.EMPTY, null, 0);
 
