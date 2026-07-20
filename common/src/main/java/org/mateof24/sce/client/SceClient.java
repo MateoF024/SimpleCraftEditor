@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import org.lwjgl.glfw.GLFW;
@@ -24,6 +25,7 @@ import org.mateof24.sce.net.SceNetworking;
 import org.mateof24.sce.registry.SceMenus;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -36,6 +38,10 @@ public final class SceClient {
     // Item under the cursor, supplied by the JEI and EMI integrations when they are present.
     private static final List<Supplier<ItemStack>> HOVERED_PROVIDERS = new ArrayList<>();
 
+    // Which item the key is currently walking the recipes of, and how far along that list we are.
+    private static Item cyclingItem;
+    private static int cycleIndex;
+
     private SceClient() {
     }
 
@@ -44,8 +50,10 @@ public final class SceClient {
     }
 
     /**
-     * When the open key is pressed over an item in JEI/EMI's list, open (or reload) the editor with the
-     * recipe that produces that item. Returns true if it handled the key.
+     * When the open key is pressed over an item in JEI/EMI's list, open (or reload) the editor with a recipe
+     * that produces that item. An item often has several recipes — and for modded items the first one is
+     * rarely the one you want — so pressing the key again walks to the next one and names it, until the
+     * pointer moves to a different item. Returns true if it handled the key.
      */
     public static boolean tryLoadHoveredRecipe(int keyCode, int scanCode) {
         if (!OPEN_MANAGER.matches(keyCode, scanCode) || !ClientEditorState.canEdit()) {
@@ -56,15 +64,27 @@ public final class SceClient {
             return false;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        ResourceLocation recipeId = findRecipeFor(minecraft, hovered);
-        if (recipeId == null) {
+        List<ResourceLocation> recipes = findRecipesFor(minecraft, hovered);
+        if (recipes.isEmpty()) {
+            cyclingItem = null;
             if (minecraft.player != null) {
                 minecraft.player.displayClientMessage(
                         Component.translatable("sce.msg.no_recipe", hovered.getHoverName()), false);
             }
             return true;
         }
-        SceNetworking.sendOpenEditor(recipeId.toString(), -1);
+        if (hovered.getItem() != cyclingItem) {
+            cyclingItem = hovered.getItem();
+            cycleIndex = 0;
+        } else {
+            cycleIndex = (cycleIndex + 1) % recipes.size();
+        }
+        ResourceLocation picked = recipes.get(cycleIndex);
+        if (minecraft.player != null) {
+            minecraft.player.displayClientMessage(Component.translatable(
+                    "sce.msg.recipe_cycle", cycleIndex + 1, recipes.size(), picked.toString()), false);
+        }
+        SceNetworking.sendOpenEditor(picked.toString(), -1);
         return true;
     }
 
@@ -82,18 +102,21 @@ public final class SceClient {
         return ItemStack.EMPTY;
     }
 
-    private static ResourceLocation findRecipeFor(Minecraft minecraft, ItemStack target) {
+    /** Every loaded recipe producing {@code target}, sorted so repeated presses walk a stable order. */
+    private static List<ResourceLocation> findRecipesFor(Minecraft minecraft, ItemStack target) {
         if (minecraft.level == null) {
-            return null;
+            return List.of();
         }
         RegistryAccess access = minecraft.level.registryAccess();
+        List<ResourceLocation> found = new ArrayList<>();
         for (Recipe<?> recipe : minecraft.level.getRecipeManager().getRecipes()) {
             ItemStack result = recipe.getResultItem(access);
             if (!result.isEmpty() && ItemStack.isSameItem(result, target)) {
-                return recipe.getId();
+                found.add(recipe.getId());
             }
         }
-        return null;
+        found.sort(Comparator.comparing(ResourceLocation::toString));
+        return found;
     }
 
     public static void init() {

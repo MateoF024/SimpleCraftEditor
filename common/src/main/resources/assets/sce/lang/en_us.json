@@ -82,6 +82,7 @@
   "sce.status.sent": "Sent %s to the server.",
 
   "sce.msg.no_recipe": "[SCE] No recipe found for %s",
+  "sce.msg.recipe_cycle": "[SCE] Recipe %s/%s — %s (press again for the next one)",
   "sce.msg.parse_fail": "[SCE] Could not parse recipe JSON.",
   "sce.msg.saved": "[SCE] Saved recipe %s",
   "sce.msg.rejected": "[SCE] Recipe %s was rejected (invalid definition).",

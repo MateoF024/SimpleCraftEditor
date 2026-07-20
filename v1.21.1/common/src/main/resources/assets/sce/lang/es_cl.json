@@ -33,6 +33,7 @@
   "sce.status.sent": "%s enviada al servidor.",
 
   "sce.msg.no_recipe": "[SCE] No se encontró ninguna receta para %s",
+  "sce.msg.recipe_cycle": "[SCE] Receta %s/%s — %s (pulsa otra vez para la siguiente)",
   "sce.msg.parse_fail": "[SCE] No se pudo analizar el JSON de la receta.",
   "sce.msg.saved": "[SCE] Receta %s guardada",
   "sce.msg.rejected": "[SCE] La receta %s fue rechazada (definición no válida).",
