@@ -22,6 +22,7 @@ import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.client.screen.RawRecipeScreen;
 import org.mateof24.sce.client.screen.RecipeEditorScreen;
 import org.mateof24.sce.client.screen.RecipeManagerScreen;
+import org.mateof24.sce.client.screen.SequencedAssemblyScreen;
 import org.mateof24.sce.net.SceNetworking;
 import org.mateof24.sce.registry.SceMenus;
 
@@ -168,12 +169,19 @@ public final class SceClient {
             String json = buf.readUtf(1024 * 1024);
             context.queue(() -> Minecraft.getInstance().setScreen(new RawRecipeScreen(id, json)));
         });
+        NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.OPEN_SEQUENCE, (buf, context) -> {
+            ResourceLocation id = buf.readResourceLocation();
+            String json = buf.readUtf(1024 * 1024);
+            context.queue(() -> Minecraft.getInstance().setScreen(new SequencedAssemblyScreen(id, json)));
+        });
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.SAVE_RESULT, (buf, context) -> {
             ResourceLocation id = buf.readResourceLocation();
             boolean ok = buf.readBoolean();
             context.queue(() -> {
                 if (Minecraft.getInstance().screen instanceof RecipeEditorScreen editor) {
                     editor.onSaveResult(id, ok);
+                } else if (Minecraft.getInstance().screen instanceof SequencedAssemblyScreen sequence) {
+                    sequence.onSaveResult(id, ok);
                 }
             });
         });

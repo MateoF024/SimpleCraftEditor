@@ -5,6 +5,8 @@
   "sce.manager.title": "Simple Craft Editor",
   "sce.editor.title": "Recipe Editor",
   "sce.raw.title": "Raw Recipe: %s",
+  "sce.sequence.title": "Sequenced Assembly",
+  "sce.sequence.steps": "Steps",
 
   "sce.button.new_recipe": "New Recipe…",
   "sce.button.edit": "Edit",
@@ -20,6 +22,7 @@
   "sce.button.clear_slot": "Clear Slot",
   "sce.button.set_fluid": "Set Fluid",
   "sce.button.mirrored": "Mirrored: %s",
+  "sce.button.add_step": "+ Add Step",
   "sce.button.type": "Type: %s",
   "sce.button.heat": "Heat: %s",
 
@@ -33,6 +36,11 @@
   "sce.hint.fluid": "fluid",
   "sce.hint.fluid_id": "fluid id",
   "sce.hint.amount": "mB",
+  "sce.hint.sequence_base": "base item",
+  "sce.hint.sequence_transitional": "transitional item",
+  "sce.hint.sequence_loops": "loops",
+  "sce.hint.sequence_result": "result item",
+  "sce.hint.sequence_step_item": "step ingredient",
   "sce.hint.exp": "exp",
   "sce.hint.time": "time",
   "sce.hint.chance": "chance",
@@ -72,6 +80,7 @@
   "sce.mode.create_conversion": "Create: Conversion",
   "sce.mode.create_item_application": "Create: Item Application",
   "sce.mode.create_mechanical_crafting": "Create: Mechanical Crafting",
+  "sce.mode.create_sequenced_assembly": "Create: Sequenced Assembly",
 
   "sce.status.click_input_first": "Click an input slot first.",
   "sce.status.clear_slot_first": "Clear the item out of that slot before setting a tag.",

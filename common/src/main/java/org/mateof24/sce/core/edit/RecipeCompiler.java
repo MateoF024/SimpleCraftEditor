@@ -29,6 +29,7 @@ public final class RecipeCompiler {
             case STONECUTTING -> stonecutting(draft);
             case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
             case MECHANICAL_CRAFTING -> mechanicalCrafting(draft);
+            case SEQUENCED_ASSEMBLY -> SequencedAssemblyCompiler.toJson(draft);
         };
     }
 
@@ -155,6 +156,7 @@ public final class RecipeCompiler {
                     fromCooking(json, type);
             case "minecraft:stonecutting" -> fromStonecutting(json);
             case "create:mechanical_crafting" -> fromMechanicalCrafting(json);
+            case SequencedAssemblyCompiler.TYPE -> SequencedAssemblyCompiler.fromJson(id, json);
             default -> type.startsWith("create:") ? CreateRecipeCompiler.fromJson(id, json) : null;
         };
         if (draft != null) {

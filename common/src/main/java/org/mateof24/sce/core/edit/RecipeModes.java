@@ -18,12 +18,12 @@ public final class RecipeModes {
             RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.MECHANICAL_CRAFTING};
+            RecipeDraft.Kind.MECHANICAL_CRAFTING, RecipeDraft.Kind.SEQUENCED_ASSEMBLY};
     private static final RecipeDraft.Cooking[] COOK = {
             null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
             RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null,
             null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null};
+            null, null, null, null, null, null, null};
     private static final String[] CREATE_TYPE = {
             null, null, null, null, null, null, null,
             "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
@@ -31,7 +31,7 @@ public final class RecipeModes {
             // Spout, Item Drain, Basin, and the two item-swap machines: all plain processing recipes, so they
             // share the ingredient/result layout of the types above.
             "create:filling", "create:emptying", "create:basin", "create:conversion", "create:item_application",
-            "create:mechanical_crafting"};
+            "create:mechanical_crafting", SequencedAssemblyCompiler.TYPE};
     private static final String[] LABEL_KEY = {
             "sce.mode.shapeless", "sce.mode.shaped", "sce.mode.smelting", "sce.mode.blasting",
             "sce.mode.smoking", "sce.mode.campfire", "sce.mode.stonecutting",
@@ -41,17 +41,18 @@ public final class RecipeModes {
             "sce.mode.create_deploying",
             "sce.mode.create_filling", "sce.mode.create_emptying", "sce.mode.create_basin",
             "sce.mode.create_conversion", "sce.mode.create_item_application",
-            "sce.mode.create_mechanical_crafting"};
+            "sce.mode.create_mechanical_crafting", "sce.mode.create_sequenced_assembly"};
     private static final int[] INPUTS = {
             9, 9, 1, 1, 1, 1, 1,
             6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
             6, 6, 6, 6, 6,
-            RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE};
+            RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE,
+            1}; // sequenced assembly is edited on its own screen, not on the slot grid
     private static final int[] OUTPUTS = {
             1, 1, 1, 1, 1, 1, 1,
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
             4, 4, 4, 4, 4,
-            1};
+            1, 1};
 
     public static final int COUNT = KIND.length;
     private static final int FIRST_CREATE = 7;
@@ -93,6 +94,11 @@ public final class RecipeModes {
     /** Create's mechanical crafter: a shaped recipe on a grid bigger than the vanilla 3x3. */
     public static boolean isMechanicalCrafting(int mode) {
         return KIND[clamp(mode)] == RecipeDraft.Kind.MECHANICAL_CRAFTING;
+    }
+
+    /** Sequenced assembly is edited on a dedicated screen rather than the shared slot layout. */
+    public static boolean isSequencedAssembly(int mode) {
+        return KIND[clamp(mode)] == RecipeDraft.Kind.SEQUENCED_ASSEMBLY;
     }
 
     /**
@@ -157,6 +163,14 @@ public final class RecipeModes {
                 }
             }
             return FIRST_CREATE;
+        }
+        if (draft.kind == RecipeDraft.Kind.SEQUENCED_ASSEMBLY) {
+            for (int i = FIRST_CREATE; i < COUNT; i++) {
+                if (KIND[i] == RecipeDraft.Kind.SEQUENCED_ASSEMBLY) {
+                    return i;
+                }
+            }
+            return 0;
         }
         if (draft.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
             for (int i = FIRST_CREATE; i < COUNT; i++) {

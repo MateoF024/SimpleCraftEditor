@@ -11,7 +11,10 @@ import java.util.List;
  * phase are modelled; richer/modded recipes come through adapters and typed editors in later phases.
  */
 public final class RecipeDraft {
-    public enum Kind {CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING, MECHANICAL_CRAFTING}
+    public enum Kind {
+        CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING, MECHANICAL_CRAFTING,
+        SEQUENCED_ASSEMBLY
+    }
 
     /**
      * Side of the square grid the editor offers for mechanical crafting. Create's own recipes fit inside
@@ -62,6 +65,12 @@ public final class RecipeDraft {
     /** Mechanical crafting only: whether Create should also match the pattern mirrored. */
     public boolean acceptMirrored;
 
+    // Sequenced assembly: one base ingredient (inputs[0]) is carried through an ordered list of processing
+    // steps, each of which is itself a recipe, looping a number of times before yielding the results.
+    public IngredientValue transitionalItem = IngredientValue.empty();
+    public int loops = 1;
+    public final List<RecipeDraft> sequence = new ArrayList<>();
+
     public IngredientValue result = IngredientValue.empty();
     public int resultCount = 1;
 
@@ -92,6 +101,7 @@ public final class RecipeDraft {
             case COOKING, STONECUTTING -> 1;
             case CREATE_PROCESSING -> 6;
             case MECHANICAL_CRAFTING -> MECHANICAL_SIZE * MECHANICAL_SIZE;
+            case SEQUENCED_ASSEMBLY -> 1; // the single base ingredient the sequence starts from
         };
         for (int i = 0; i < slots; i++) {
             draft.inputs.add(IngredientValue.empty());

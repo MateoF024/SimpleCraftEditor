@@ -44,6 +44,7 @@ public final class SceNetworking {
     public static final ResourceLocation SYNC = channel("sync");
     public static final ResourceLocation RECIPE_JSON = channel("recipe_json");
     public static final ResourceLocation OPEN_RAW = channel("open_raw");
+    public static final ResourceLocation OPEN_SEQUENCE = channel("open_sequence");
     public static final ResourceLocation SAVE_RESULT = channel("save_result");
 
     private static final int MAX_JSON = 1024 * 1024;
@@ -163,7 +164,19 @@ public final class SceNetworking {
             }
         }
         mode = RecipeModes.sanitize(mode);
+        if (RecipeModes.isSequencedAssembly(mode)) {
+            sendOpenSequence(player, editId, editJson);
+            return;
+        }
         MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson, mode));
+    }
+
+    /** Sequenced assembly is edited on its own screen, so it is handed over instead of a container menu. */
+    public static void sendOpenSequence(ServerPlayer player, ResourceLocation id, String json) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeResourceLocation(id == null ? ResourceLocation.tryParse("sce:new_recipe") : id);
+        buf.writeUtf(json, MAX_JSON);
+        NetworkManager.sendToPlayer(player, OPEN_SEQUENCE, buf);
     }
 
     public static void sendOpenRaw(ServerPlayer player, ResourceLocation id, String json) {
