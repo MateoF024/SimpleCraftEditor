@@ -57,6 +57,19 @@ public final class RecipeModes {
     public static final int COUNT = KIND.length;
     private static final int FIRST_CREATE = 7;
 
+    static {
+        // The six tables above are indexed by mode and must stay the same length: a short one throws
+        // deep inside the editor when a mode is cycled onto. Failing here instead names the problem at
+        // load time, which is the only place anyone adding a recipe type will be looking.
+        if (COOK.length != COUNT || CREATE_TYPE.length != COUNT || LABEL_KEY.length != COUNT
+                || INPUTS.length != COUNT || OUTPUTS.length != COUNT) {
+            throw new IllegalStateException("SCE recipe mode tables disagree: KIND=" + COUNT
+                    + ", COOK=" + COOK.length + ", CREATE_TYPE=" + CREATE_TYPE.length
+                    + ", LABEL_KEY=" + LABEL_KEY.length + ", INPUTS=" + INPUTS.length
+                    + ", OUTPUTS=" + OUTPUTS.length);
+        }
+    }
+
     private RecipeModes() {
     }
 
