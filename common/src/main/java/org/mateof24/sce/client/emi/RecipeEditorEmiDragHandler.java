@@ -8,6 +8,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.material.Fluid;
 import org.mateof24.sce.client.screen.RecipeEditorScreen;
 
 import java.util.List;
@@ -17,6 +18,21 @@ import java.util.List;
 public class RecipeEditorEmiDragHandler implements EmiDragDropHandler<RecipeEditorScreen> {
     @Override
     public boolean dropStack(RecipeEditorScreen screen, EmiIngredient dragged, int mouseX, int mouseY) {
+        // A fluid dragged out of EMI is a fluid, not the bucket holding it, so it goes in as an amount.
+        Fluid fluid = firstFluid(dragged);
+        if (fluid != null) {
+            for (int i = 0; i < screen.inputSlotCount(); i++) {
+                if (contains(screen.inputSlotArea(i), mouseX, mouseY)) {
+                    return screen.setGhostInputFluid(i, fluid);
+                }
+            }
+            for (int i = 0; i < screen.outputSlotCount(); i++) {
+                if (contains(screen.outputSlotArea(i), mouseX, mouseY)) {
+                    return screen.setGhostOutputFluid(i, fluid);
+                }
+            }
+            return false;
+        }
         ItemStack stack = firstItem(dragged);
         if (stack.isEmpty()) {
             return false;
@@ -38,7 +54,11 @@ public class RecipeEditorEmiDragHandler implements EmiDragDropHandler<RecipeEdit
 
     @Override
     public void render(RecipeEditorScreen screen, EmiIngredient dragged, GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        if (firstItem(dragged).isEmpty()) {
+        boolean fluid = firstFluid(dragged) != null;
+        if (fluid && !screen.acceptsFluids()) {
+            return; // nothing here can hold a fluid, so do not offer a target
+        }
+        if (!fluid && firstItem(dragged).isEmpty()) {
             return;
         }
         for (int i = 0; i < screen.inputSlotCount(); i++) {
@@ -61,5 +81,11 @@ public class RecipeEditorEmiDragHandler implements EmiDragDropHandler<RecipeEdit
     private static ItemStack firstItem(EmiIngredient ingredient) {
         List<EmiStack> stacks = ingredient.getEmiStacks();
         return stacks.isEmpty() ? ItemStack.EMPTY : stacks.get(0).getItemStack();
+    }
+
+    /** EMI keys a stack by whatever it holds, so a fluid stack answers to the fluid type directly. */
+    private static Fluid firstFluid(EmiIngredient ingredient) {
+        List<EmiStack> stacks = ingredient.getEmiStacks();
+        return stacks.isEmpty() ? null : stacks.get(0).getKeyOfType(Fluid.class);
     }
 }

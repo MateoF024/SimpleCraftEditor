@@ -540,6 +540,40 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
+    /** Whether this recipe type takes fluids at all; only Create's do. */
+    public boolean acceptsFluids() {
+        return RecipeModes.isCreate(mode);
+    }
+
+    /**
+     * Drops a fluid dragged in from a recipe viewer into a slot. A drag carries no amount worth trusting,
+     * so it always lands as one bucket; anything else is typed into the fluid row.
+     */
+    public boolean setGhostInputFluid(int index, Fluid fluid) {
+        ResourceLocation id = FluidSprites.idOf(fluid);
+        if (id == null || !acceptsFluids() || index < 0 || index >= inputCount) {
+            return false;
+        }
+        // The slot's own item would otherwise keep winning over the fluid drawn on top of it.
+        if (!menu.gridItem(index).isEmpty()) {
+            SceNetworking.sendSetSlot(index, ItemStack.EMPTY);
+        }
+        overlay[index] = IngredientValue.fluid(id, IngredientValue.BUCKET);
+        return true;
+    }
+
+    public boolean setGhostOutputFluid(int index, Fluid fluid) {
+        ResourceLocation id = FluidSprites.idOf(fluid);
+        if (id == null || !acceptsFluids() || index < 0 || index >= outputCount) {
+            return false;
+        }
+        if (!menu.outputItem(index).isEmpty()) {
+            SceNetworking.sendSetSlot(inputCount + index, ItemStack.EMPTY);
+        }
+        overlayOut[index] = IngredientValue.fluid(id, IngredientValue.BUCKET);
+        return true;
+    }
+
     // ------------------------------------------------------------------ rendering
 
     @Override
@@ -597,7 +631,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (value == null || value.isEmpty()) {
             return;
         }
-        ItemStack stack = stackFor(value);
+        // A fluid is drawn as its own texture, the way a recipe viewer shows it; only if it has none does
+        // it fall back to the bucket stand-in below.
+        boolean drawn = value.isFluid() && FluidSprites.render(graphics, FluidSprites.resolve(value), x, y, 0.7F);
+        ItemStack stack = drawn ? ItemStack.EMPTY : stackFor(value);
         if (!stack.isEmpty()) {
             stack.setCount(Math.max(1, count));
             // Ghosts are only a preview of the current definition, so draw them at 70% opacity.
