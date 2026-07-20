@@ -95,6 +95,20 @@ public final class RecipeModes {
         return KIND[clamp(mode)] == RecipeDraft.Kind.MECHANICAL_CRAFTING;
     }
 
+    /**
+     * Whether a Create recipe type has an editor mode. Types without one (sequenced assembly and the
+     * niche machines) must not be parsed into a draft: they would load as the wrong mode and lose the
+     * fields this editor does not model, so they go to the raw JSON editor instead.
+     */
+    public static boolean hasCreateType(String createType) {
+        for (int i = FIRST_CREATE; i < COUNT; i++) {
+            if (CREATE_TYPE[i].equals(createType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static int inputCount(int mode) {
         return INPUTS[clamp(mode)];
     }

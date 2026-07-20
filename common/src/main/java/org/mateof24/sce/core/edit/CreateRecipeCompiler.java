@@ -58,10 +58,17 @@ public final class CreateRecipeCompiler {
     }
 
     public static RecipeDraft fromJson(ResourceLocation id, JsonObject json) {
+        String type = json.has("type") ? json.get("type").getAsString() : "";
+        if (!RecipeModes.hasCreateType(type)) {
+            // Sequenced assembly and the niche machines carry fields this editor does not model. Parsing
+            // them here would open them as the wrong type and drop those fields on save, so hand them to
+            // the raw JSON editor instead, which round-trips them untouched.
+            return null;
+        }
         RecipeDraft draft = new RecipeDraft();
         draft.kind = RecipeDraft.Kind.CREATE_PROCESSING;
         draft.id = id;
-        draft.createType = json.has("type") ? json.get("type").getAsString() : "";
+        draft.createType = type;
         draft.inputs.clear();
         draft.results.clear();
 
