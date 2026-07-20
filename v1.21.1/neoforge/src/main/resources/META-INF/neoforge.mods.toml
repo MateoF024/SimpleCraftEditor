@@ -16,21 +16,21 @@ logoFile = "assets/sce/icon.png"
 [[dependencies.sce]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21,)"
+versionRange = "[21.1,21.2)"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.sce]]
 modId = "minecraft"
 type = "required"
-versionRange = "[1.21.1,1.22)"
+versionRange = "[1.21.1]"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.sce]]
 modId = "architectury"
 type = "required"
-versionRange = "[13.0.8,)"
+versionRange = "[13.0.8,14)"
 ordering = "AFTER"
 side = "BOTH"
 

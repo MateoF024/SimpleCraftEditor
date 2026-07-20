@@ -16,20 +16,20 @@ logoFile = "assets/sce/icon.png"
 [[dependencies.sce]]
 modId = "forge"
 mandatory = true
-versionRange = "[47,)"
+versionRange = "[47,48)"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.sce]]
 modId = "minecraft"
 mandatory = true
-versionRange = "[1.20.1,1.21)"
+versionRange = "[1.20.1]"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.sce]]
 modId = "architectury"
 mandatory = true
-versionRange = "[9.2.14,)"
+versionRange = "[9.2.14,10)"
 ordering = "AFTER"
 side = "BOTH"
