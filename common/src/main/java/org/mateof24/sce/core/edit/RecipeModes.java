@@ -17,19 +17,21 @@ public final class RecipeModes {
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING,
             RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING};
+            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
+            RecipeDraft.Kind.MECHANICAL_CRAFTING};
     private static final RecipeDraft.Cooking[] COOK = {
             null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
             RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null,
             null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null};
+            null, null, null, null, null, null};
     private static final String[] CREATE_TYPE = {
             null, null, null, null, null, null, null,
             "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
             "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying",
             // Spout, Item Drain, Basin, and the two item-swap machines: all plain processing recipes, so they
             // share the ingredient/result layout of the types above.
-            "create:filling", "create:emptying", "create:basin", "create:conversion", "create:item_application"};
+            "create:filling", "create:emptying", "create:basin", "create:conversion", "create:item_application",
+            "create:mechanical_crafting"};
     private static final String[] LABEL_KEY = {
             "sce.mode.shapeless", "sce.mode.shaped", "sce.mode.smelting", "sce.mode.blasting",
             "sce.mode.smoking", "sce.mode.campfire", "sce.mode.stonecutting",
@@ -38,15 +40,18 @@ public final class RecipeModes {
             "sce.mode.create_splashing", "sce.mode.create_haunting", "sce.mode.create_sandpaper",
             "sce.mode.create_deploying",
             "sce.mode.create_filling", "sce.mode.create_emptying", "sce.mode.create_basin",
-            "sce.mode.create_conversion", "sce.mode.create_item_application"};
+            "sce.mode.create_conversion", "sce.mode.create_item_application",
+            "sce.mode.create_mechanical_crafting"};
     private static final int[] INPUTS = {
             9, 9, 1, 1, 1, 1, 1,
             6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6};
+            6, 6, 6, 6, 6,
+            RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE};
     private static final int[] OUTPUTS = {
             1, 1, 1, 1, 1, 1, 1,
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4};
+            4, 4, 4, 4, 4,
+            1};
 
     public static final int COUNT = KIND.length;
     private static final int FIRST_CREATE = 7;
@@ -83,6 +88,11 @@ public final class RecipeModes {
 
     public static boolean isCreate(int mode) {
         return KIND[clamp(mode)] == RecipeDraft.Kind.CREATE_PROCESSING;
+    }
+
+    /** Create's mechanical crafter: a shaped recipe on a grid bigger than the vanilla 3x3. */
+    public static boolean isMechanicalCrafting(int mode) {
+        return KIND[clamp(mode)] == RecipeDraft.Kind.MECHANICAL_CRAFTING;
     }
 
     public static int inputCount(int mode) {
@@ -133,6 +143,14 @@ public final class RecipeModes {
                 }
             }
             return FIRST_CREATE;
+        }
+        if (draft.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
+            for (int i = FIRST_CREATE; i < COUNT; i++) {
+                if (KIND[i] == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
+                    return i;
+                }
+            }
+            return 0;
         }
         for (int i = 0; i < FIRST_CREATE; i++) {
             if (KIND[i] == draft.kind && (COOK[i] == null || COOK[i] == draft.cooking)) {

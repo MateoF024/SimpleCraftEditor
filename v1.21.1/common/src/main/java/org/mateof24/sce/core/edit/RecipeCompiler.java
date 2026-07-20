@@ -32,6 +32,7 @@ public final class RecipeCompiler {
             case COOKING -> cooking(draft);
             case STONECUTTING -> stonecutting(draft);
             case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
+            case MECHANICAL_CRAFTING -> mechanicalCrafting(draft);
         };
     }
 
@@ -50,7 +51,25 @@ public final class RecipeCompiler {
 
     private static JsonObject shaped(RecipeDraft draft) {
         JsonObject json = base(draft, "minecraft:crafting_shaped");
+        writePattern(json, draft);
+        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
+        return json;
+    }
 
+    /**
+     * Create's mechanical crafter takes a shaped recipe on a grid bigger than 3x3, so it reuses the pattern
+     * and key of a normal shaped recipe and only adds its mirror flag.
+     */
+    private static JsonObject mechanicalCrafting(RecipeDraft draft) {
+        JsonObject json = base(draft, "create:mechanical_crafting");
+        writePattern(json, draft);
+        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
+        json.addProperty("accept_mirrored", draft.acceptMirrored);
+        return json;
+    }
+
+    /** Trims the filled area of the grid into a {@code pattern} plus its {@code key} legend. */
+    private static void writePattern(JsonObject json, RecipeDraft draft) {
         int minRow = draft.height, maxRow = -1, minCol = draft.width, maxCol = -1;
         for (int row = 0; row < draft.height; row++) {
             for (int col = 0; col < draft.width; col++) {
@@ -89,8 +108,6 @@ public final class RecipeCompiler {
         }
         json.add("pattern", pattern);
         json.add("key", key);
-        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
-        return json;
     }
 
     private static JsonObject cooking(RecipeDraft draft) {
@@ -143,6 +160,7 @@ public final class RecipeCompiler {
             case "minecraft:smelting", "minecraft:blasting", "minecraft:smoking", "minecraft:campfire_cooking" ->
                     fromCooking(json, type);
             case "minecraft:stonecutting" -> fromStonecutting(json);
+            case "create:mechanical_crafting" -> fromMechanicalCrafting(json);
             default -> type.startsWith("create:") ? CreateRecipeCompiler.fromJson(id, json) : null;
         };
         if (draft != null) {
@@ -197,6 +215,18 @@ public final class RecipeCompiler {
             }
         }
         readResult(draft, json.get("result"));
+        return draft;
+    }
+
+    /** Mechanical crafting reads exactly like a shaped recipe, plus its mirror flag. */
+    private static RecipeDraft fromMechanicalCrafting(JsonObject json) {
+        RecipeDraft draft = fromShaped(json);
+        draft.kind = RecipeDraft.Kind.MECHANICAL_CRAFTING;
+        // Create names the flag differently across versions; accept either so a recipe authored on one
+        // version still loads on the other.
+        String key = json.has("accept_mirrored") ? "accept_mirrored"
+                : (json.has("acceptMirrored") ? "acceptMirrored" : null);
+        draft.acceptMirrored = key != null && json.get(key).getAsBoolean();
         return draft;
     }
 

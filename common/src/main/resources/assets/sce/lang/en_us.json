@@ -19,6 +19,7 @@
   "sce.button.set_tag": "Set Tag",
   "sce.button.clear_slot": "Clear Slot",
   "sce.button.set_fluid": "Set Fluid",
+  "sce.button.mirrored": "Mirrored: %s",
   "sce.button.type": "Type: %s",
   "sce.button.heat": "Heat: %s",
 
@@ -40,6 +41,9 @@
   "sce.label.xp": "xp",
   "sce.label.time": "time",
   "sce.label.chance": "chance",
+
+  "sce.toggle.on": "On",
+  "sce.toggle.off": "Off",
 
   "sce.heat.none": "None",
   "sce.heat.heated": "Heated",
@@ -67,6 +71,7 @@
   "sce.mode.create_basin": "Create: Basin",
   "sce.mode.create_conversion": "Create: Conversion",
   "sce.mode.create_item_application": "Create: Item Application",
+  "sce.mode.create_mechanical_crafting": "Create: Mechanical Crafting",
 
   "sce.status.click_input_first": "Click an input slot first.",
   "sce.status.clear_slot_first": "Clear the item out of that slot before setting a tag.",

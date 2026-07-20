@@ -52,8 +52,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private final int inputCount;
     private final int outputCount;
     private final boolean create;
+    private final boolean mechanical;
+    /** Mechanical crafting only: whether Create should also match the pattern mirrored. */
+    private boolean mirrored;
 
-    private final IngredientValue[] overlay = new IngredientValue[9];
+    private final IngredientValue[] overlay =
+            new IngredientValue[RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE];
     private final IngredientValue[] overlayOut;
     private final int[] overlayOutCount;
     private final float[] outputChance;
@@ -84,11 +88,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.imageWidth = 240;
-        this.imageHeight = 252;
+        this.imageHeight = 266;
         this.mode = menu.mode();
         this.inputCount = menu.inputCount();
         this.outputCount = menu.outputCount();
         this.create = RecipeModes.isCreate(mode);
+        this.mechanical = RecipeModes.isMechanicalCrafting(mode);
         this.overlayOut = new IngredientValue[outputCount];
         this.overlayOutCount = new int[outputCount];
         this.outputChance = new float[outputCount];
@@ -97,7 +102,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private void initFromBase(RecipeDraft base) {
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < overlay.length; i++) {
             overlay[i] = IngredientValue.empty();
         }
         for (int i = 0; i < outputCount; i++) {
@@ -111,14 +116,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         pendingExp = base.experience;
         pendingTime = base.kind == RecipeDraft.Kind.CREATE_PROCESSING ? base.processingTime : base.cookingTime;
 
-        if (base.kind == RecipeDraft.Kind.CRAFTING_SHAPED) {
-            for (int row = 0; row < base.height && row < 3; row++) {
-                for (int col = 0; col < base.width && col < 3; col++) {
-                    overlay[row * 3 + col] = base.input(row * base.width + col);
+        if (base.kind == RecipeDraft.Kind.CRAFTING_SHAPED || base.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
+            // Row-major grids: re-index the recipe's own width onto the width this editor shows, clipping
+            // anything larger than the grid we can display.
+            int columns = gridColumns();
+            for (int row = 0; row < base.height && row < columns; row++) {
+                for (int col = 0; col < base.width && col < columns; col++) {
+                    overlay[row * columns + col] = base.input(row * base.width + col);
                 }
             }
+            mirrored = base.acceptMirrored;
         } else {
-            for (int i = 0; i < base.inputs.size() && i < 9; i++) {
+            for (int i = 0; i < base.inputs.size() && i < overlay.length; i++) {
                 overlay[i] = base.input(i);
             }
         }
@@ -146,6 +155,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         return 0;
     }
 
+    /** Columns in the input grid; mechanical crafting uses a bigger square than the vanilla 3x3. */
+    private int gridColumns() {
+        return mechanical ? RecipeDraft.MECHANICAL_SIZE : 3;
+    }
+
     private boolean mixing() {
         return "create:mixing".equals(RecipeModes.createType(mode));
     }
@@ -166,16 +180,27 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
                 .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
-        tagBox = new EditBox(font, leftPos + 8, topPos + 98, 98, 16, Component.translatable("sce.hint.tag"));
+        // Mechanical crafting's grid is taller, so its tag row sits below it.
+        int tagRowY = mechanical ? 136 : 98;
+        tagBox = new EditBox(font, leftPos + 8, topPos + tagRowY, 98, 16, Component.translatable("sce.hint.tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tagValue);
         tagBox.setHint(Component.translatable("sce.hint.tag_id"));
         tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.set_tag"), b -> applyTag())
-                .bounds(leftPos + 110, topPos + 98, 54, 16).build());
+                .bounds(leftPos + 110, topPos + tagRowY, 54, 16).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
-                .bounds(leftPos + 168, topPos + 98, 64, 16).build());
+                .bounds(leftPos + 168, topPos + tagRowY, 64, 16).build());
+
+        if (mechanical) {
+            // Sits in the free space beside the grid, under the result slot.
+            addRenderableWidget(Button.builder(Component.translatable("sce.button.mirrored",
+                    Component.translatable(mirrored ? "sce.toggle.on" : "sce.toggle.off")), b -> {
+                mirrored = !mirrored;
+                rebuildWidgets();
+            }).bounds(leftPos + 148, topPos + 100, 84, 16).build());
+        }
 
         if (RecipeModes.isCooking(mode)) {
             expBox = new EditBox(font, leftPos + 190, topPos + 42, 42, 16, Component.translatable("sce.hint.exp"));
@@ -224,10 +249,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     .bounds(leftPos + 166, topPos + 118, 66, 16).build());
         }
 
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 224,52, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 224,58, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 224,40, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 224,62, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 238,52, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 238,58, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 238,40, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 238,62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
         // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
@@ -365,8 +390,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private RecipeDraft buildDraft(ResourceLocation id) {
         RecipeDraft draft = new RecipeDraft();
         draft.id = id;
-        draft.width = 3;
-        draft.height = 3;
+        draft.width = gridColumns();
+        draft.height = gridColumns();
+        draft.acceptMirrored = mirrored;
         draft.inputs.clear();
         for (int i = 0; i < inputCount; i++) {
             draft.inputs.add(resolveInput(i));

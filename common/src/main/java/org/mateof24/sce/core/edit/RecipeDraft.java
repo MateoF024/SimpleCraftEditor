@@ -11,7 +11,14 @@ import java.util.List;
  * phase are modelled; richer/modded recipes come through adapters and typed editors in later phases.
  */
 public final class RecipeDraft {
-    public enum Kind {CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING}
+    public enum Kind {CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING, MECHANICAL_CRAFTING}
+
+    /**
+     * Side of the square grid the editor offers for mechanical crafting. Create's own recipes fit inside
+     * this; the recipe format itself allows far larger patterns, and a pattern loaded from a bigger one is
+     * clipped to what the editor can show.
+     */
+    public static final int MECHANICAL_SIZE = 5;
 
     /** One item output of a Create processing recipe: an item, a count and a drop chance (0..1). */
     public static final class ResultEntry {
@@ -47,9 +54,13 @@ public final class RecipeDraft {
     public String group = "";
 
     // Shaped: a width*height row-major grid. Shapeless: an unordered input list. Cooking/stonecutting: inputs[0].
+    // Mechanical crafting is shaped too, but on a grid larger than 3x3.
     public int width = 3;
     public int height = 3;
     public final List<IngredientValue> inputs = new ArrayList<>();
+
+    /** Mechanical crafting only: whether Create should also match the pattern mirrored. */
+    public boolean acceptMirrored;
 
     public IngredientValue result = IngredientValue.empty();
     public int resultCount = 1;
@@ -71,11 +82,16 @@ public final class RecipeDraft {
     public static RecipeDraft blank(Kind kind) {
         RecipeDraft draft = new RecipeDraft();
         draft.kind = kind;
+        if (kind == Kind.MECHANICAL_CRAFTING) {
+            draft.width = MECHANICAL_SIZE;
+            draft.height = MECHANICAL_SIZE;
+        }
         int slots = switch (kind) {
             case CRAFTING_SHAPED -> draft.width * draft.height;
             case CRAFTING_SHAPELESS -> 9;
             case COOKING, STONECUTTING -> 1;
             case CREATE_PROCESSING -> 6;
+            case MECHANICAL_CRAFTING -> MECHANICAL_SIZE * MECHANICAL_SIZE;
         };
         for (int i = 0; i < slots; i++) {
             draft.inputs.add(IngredientValue.empty());

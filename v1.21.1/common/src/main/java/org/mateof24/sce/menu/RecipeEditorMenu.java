@@ -25,7 +25,8 @@ import org.mateof24.sce.registry.SceMenus;
  * single input for cooking/stonecutting, and a 2x3 input block with a column of outputs for Create.
  */
 public class RecipeEditorMenu extends AbstractContainerMenu {
-    private final Container grid = new SimpleContainer(9);
+    // Sized for the largest layout any type uses: mechanical crafting's square grid.
+    private final Container grid = new SimpleContainer(RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE);
     private final Container output = new SimpleContainer(4);
 
     private final ResourceLocation editId;
@@ -50,26 +51,29 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         this.outputCount = RecipeModes.outputCount(this.mode);
 
         boolean create = RecipeModes.isCreate(this.mode);
-        boolean single = !RecipeModes.isCrafting(this.mode) && !create;
+        boolean mechanical = RecipeModes.isMechanicalCrafting(this.mode);
+        boolean single = !RecipeModes.isCrafting(this.mode) && !create && !mechanical;
+        int columns = mechanical ? RecipeDraft.MECHANICAL_SIZE : 3;
         for (int i = 0; i < inputCount; i++) {
-            int x = single ? 60 : 44 + (i % 3) * 18;
-            int y = single ? 58 : 42 + (i / 3) * 18;
+            int x = single ? 60 : 44 + (i % columns) * 18;
+            int y = single ? 58 : 42 + (i / columns) * 18;
             addSlot(new Slot(grid, i, x, y));
         }
         for (int i = 0; i < outputCount; i++) {
+            // Mechanical crafting has a single result, sat beside its taller grid.
             int x = single ? 140 : (create ? 150 + (i % 2) * 18 : 150);
-            int y = single ? 58 : (create ? 42 + (i / 2) * 18 : 60);
+            int y = single ? 58 : (create ? 42 + (i / 2) * 18 : (mechanical ? 78 : 60));
             addSlot(new Slot(output, i, x, y));
         }
 
         // The inventory sits below the tag and fluid rows; keep in sync with the panel texture height.
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 144 + row * 18));
+                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 158 + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 39 + col * 18, 204));
+            addSlot(new Slot(inventory, col, 39 + col * 18, 218));
         }
     }
 
