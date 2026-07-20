@@ -297,6 +297,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // The type button only steps forward on a normal click; right-clicking it steps back, so
+        // overshooting the type you wanted does not mean cycling all the way round again.
+        if (button == 1 && mouseX >= leftPos + 45 && mouseX < leftPos + 195
+                && mouseY >= topPos + 4 && mouseY < topPos + 20) {
+            reopen(RecipeModes.previousAvailable(mode));
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slotId >= 0 && slotId < inputCount) {
             selectedInput = slotId;
@@ -563,10 +575,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         for (int i = 0; i < inputCount; i++) {
             inputRight = Math.max(inputRight, menu.inputSlot(i).x + 16);
         }
-        int arrowX = leftPos + (inputRight + firstOut.x) / 2 - 11;
-        int outBottom = menu.outputSlot(outputCount - 1).y + 16;
-        int arrowY = topPos + (firstOut.y + outBottom) / 2 - 8;
-        graphics.blit(ARROW_TEXTURE, arrowX, arrowY, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
+        // Only draw the arrow when the gap between grid and result can hold it; the mechanical crafting
+        // grid reaches close enough to the result slot that it would sit on top of both.
+        if (firstOut.x - inputRight >= 22) {
+            int arrowX = leftPos + (inputRight + firstOut.x) / 2 - 11;
+            int outBottom = menu.outputSlot(outputCount - 1).y + 16;
+            int arrowY = topPos + (firstOut.y + outBottom) / 2 - 8;
+            graphics.blit(ARROW_TEXTURE, arrowX, arrowY, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
+        }
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {

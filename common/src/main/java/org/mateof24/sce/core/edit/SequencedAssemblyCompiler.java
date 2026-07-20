@@ -28,7 +28,7 @@ public final class SequencedAssemblyCompiler {
 
         JsonArray sequence = new JsonArray();
         for (RecipeDraft step : draft.sequence) {
-            sequence.add(CreateRecipeCompiler.toJson(step));
+            sequence.add(stepJson(step, draft.transitionalItem));
         }
         json.add("sequence", sequence);
 
@@ -66,9 +66,15 @@ public final class SequencedAssemblyCompiler {
                     continue;
                 }
                 RecipeDraft step = CreateRecipeCompiler.fromJson(id, element.getAsJsonObject());
-                if (step != null) {
-                    draft.sequence.add(step);
+                if (step == null) {
+                    continue;
                 }
+                // Create replaces a step's first ingredient with the transitional item when the recipe
+                // loads, so the ingredient actually worth editing is the one after it.
+                IngredientValue applied = step.inputs.size() > 1 ? step.input(1) : step.input(0);
+                step.inputs.clear();
+                step.inputs.add(applied);
+                draft.sequence.add(step);
             }
         }
         if (json.has("results") && json.get("results").isJsonArray()) {
@@ -88,6 +94,26 @@ public final class SequencedAssemblyCompiler {
         }
         draft.loops = json.has("loops") ? Math.max(1, json.get("loops").getAsInt()) : 1;
         return draft;
+    }
+
+    /**
+     * A step as Create writes it: the transitional item stands in as the first ingredient (Create swaps it
+     * for the real one at load time) followed by the item this step applies, and the step yields the
+     * transitional item again so the next step has something to work on.
+     */
+    private static JsonObject stepJson(RecipeDraft step, IngredientValue transitional) {
+        RecipeDraft copy = RecipeDraft.blank(RecipeDraft.Kind.CREATE_PROCESSING);
+        copy.createType = step.createType;
+        copy.processingTime = step.processingTime;
+        copy.heat = step.heat;
+        copy.inputs.clear();
+        copy.inputs.add(transitional);
+        if (!step.input(0).isEmpty()) {
+            copy.inputs.add(step.input(0));
+        }
+        copy.results.clear();
+        copy.results.add(new RecipeDraft.ResultEntry(transitional, 1, 1.0f));
+        return CreateRecipeCompiler.toJson(copy);
     }
 
     /** An item stack as 1.20.1 Create writes it: {@code {"item": id, "count": n}}. */

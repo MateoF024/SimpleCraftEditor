@@ -148,6 +148,18 @@ public final class RecipeModes {
         return 0;
     }
 
+    /** Previous selectable mode, so the type button can walk back when you overshoot. */
+    public static int previousAvailable(int mode) {
+        int previous = clamp(mode);
+        for (int i = 0; i < COUNT; i++) {
+            previous = clamp(previous - 1);
+            if (available(previous)) {
+                return previous;
+            }
+        }
+        return 0;
+    }
+
     /** Force a mode into the available range (used server-side when a client asks for an unavailable one). */
     public static int sanitize(int mode) {
         int clamped = clamp(mode);

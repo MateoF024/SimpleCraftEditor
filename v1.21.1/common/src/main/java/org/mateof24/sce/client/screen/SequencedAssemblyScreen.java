@@ -11,10 +11,15 @@ import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeDraft;
+import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.core.edit.SequencedAssemblyCompiler;
 import org.mateof24.sce.net.SceNetworking;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Editor for Create's sequenced assembly, which is the one recipe that is not a single recipe: a base
@@ -22,6 +27,9 @@ import org.mateof24.sce.net.SceNetworking;
  * number of times before yielding the results. That does not fit the shared slot layout, so it gets a
  * screen of its own: the header holds the base, transitional item and loop count, and below it the steps
  * are listed and can be added, retyped, refilled and removed in place.
+ *
+ * <p>There is no inventory or recipe viewer here to drag items from, so every id field completes against
+ * the live item registry ({@link ItemIdSuggestions}).
  */
 @Environment(EnvType.CLIENT)
 public class SequencedAssemblyScreen extends BaseSceScreen {
@@ -29,19 +37,16 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private static final String[] STEP_TYPES = {
             "create:deploying", "create:pressing", "create:cutting", "create:filling"};
 
-    private static final int STEP_TOP = 96;
+    private static final int ROW_ID = 34;
+    private static final int ROW_PARTS = 66;
+    private static final int ROW_RESULT = 98;
+    private static final int STEPS_HEADER = 126;
+    private static final int STEP_TOP = 142;
     private static final int STEP_HEIGHT = 22;
-    private static final int MAX_VISIBLE_STEPS = 5;
 
-    private final ResourceLocation recipeId;
     private final RecipeDraft draft;
-
-    private EditBox idBox;
-    private EditBox baseBox;
-    private EditBox transitionalBox;
-    private EditBox loopsBox;
-    private EditBox resultBox;
-    private EditBox resultCountBox;
+    private final ItemIdSuggestions suggestions = new ItemIdSuggestions();
+    private final List<EditBox> idFields = new ArrayList<>();
 
     private String idValue;
     private Component status = Component.empty();
@@ -49,7 +54,6 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     public SequencedAssemblyScreen(ResourceLocation id, String json) {
         super(Component.translatable("sce.sequence.title"));
-        this.recipeId = id;
         this.idValue = id.toString();
         this.draft = parse(id, json);
     }
@@ -67,26 +71,48 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         return blank;
     }
 
+    /** How many step rows fit between the list and the buttons, leaving the status line clear. */
+    private int visibleSteps() {
+        return Math.max(1, (height - 56 - STEP_TOP) / STEP_HEIGHT);
+    }
+
     @Override
     protected void init() {
+        idFields.clear();
         int left = width / 2 - 155;
 
-        idBox = textBox(left, 28, 200, idValue, s -> idValue = s, "sce.hint.id");
-        baseBox = textBox(left, 52, 130, idOf(draft.input(0)),
-                s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base");
-        transitionalBox = textBox(left + 136, 52, 130, idOf(draft.transitionalItem),
-                s -> draft.transitionalItem = itemOf(s), "sce.hint.sequence_transitional");
-        loopsBox = textBox(left + 272, 52, 38, Integer.toString(draft.loops),
-                s -> draft.loops = Math.max(1, parseInt(s, draft.loops)), "sce.hint.sequence_loops");
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.type",
+                        Component.translatable(RecipeModes.labelKey(sequenceMode()))), b ->
+                        SceNetworking.sendOpenEditor(idValue, RecipeModes.nextAvailable(sequenceMode())))
+                .bounds(left + 150, 12, 160, 16).build());
+
+        textBox(left, ROW_ID, 250, idValue, s -> idValue = s, "sce.hint.id", false);
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b ->
+                        SceNetworking.sendOpenEditor(idValue, -1))
+                .bounds(left + 256, ROW_ID, 54, 16).build());
+
+        textBox(left, ROW_PARTS, 130, idOf(draft.input(0)),
+                s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base", true);
+        textBox(left + 136, ROW_PARTS, 130, idOf(draft.transitionalItem),
+                s -> draft.transitionalItem = itemOf(s), "sce.hint.sequence_transitional", true);
+        textBox(left + 272, ROW_PARTS, 38, Integer.toString(draft.loops),
+                s -> draft.loops = Math.max(1, parseInt(s, draft.loops)), "sce.hint.sequence_loops", false);
 
         RecipeDraft.ResultEntry result = firstResult();
-        resultBox = textBox(left, 76, 200, idOf(result.item),
-                s -> result.item = itemOf(s), "sce.hint.sequence_result");
-        resultCountBox = textBox(left + 206, 76, 38, Integer.toString(result.count),
-                s -> result.count = Math.max(1, parseInt(s, result.count)), "sce.hint.amount");
+        textBox(left, ROW_RESULT, 250, idOf(result.item),
+                s -> result.item = itemOf(s), "sce.hint.sequence_result", true);
+        textBox(left + 256, ROW_RESULT, 54, Integer.toString(result.count),
+                s -> result.count = Math.max(1, parseInt(s, result.count)), "sce.hint.amount", false);
 
-        scroll = Mth.clamp(scroll, 0, Math.max(0, draft.sequence.size() - MAX_VISIBLE_STEPS));
-        for (int row = 0; row < MAX_VISIBLE_STEPS && scroll + row < draft.sequence.size(); row++) {
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.add_step"), b -> {
+            draft.sequence.add(blankStep());
+            scroll = Math.max(0, draft.sequence.size() - visibleSteps());
+            rebuildWidgets();
+        }).bounds(left + 210, STEPS_HEADER - 4, 100, 20).build());
+
+        int visible = visibleSteps();
+        scroll = Mth.clamp(scroll, 0, Math.max(0, draft.sequence.size() - visible));
+        for (int row = 0; row < visible && scroll + row < draft.sequence.size(); row++) {
             int index = scroll + row;
             RecipeDraft step = draft.sequence.get(index);
             int y = STEP_TOP + row * STEP_HEIGHT;
@@ -94,34 +120,42 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                 step.createType = nextType(step.createType);
                 rebuildWidgets();
             }).bounds(left + 20, y, 92, 20).build());
-            addRenderableWidget(textBox(left + 116, y + 2, 150, idOf(step.input(0)),
-                    s -> step.setInput(0, itemOf(s)), "sce.hint.sequence_step_item"));
+            textBox(left + 116, y + 2, 150, idOf(step.input(0)),
+                    s -> step.setInput(0, itemOf(s)), "sce.hint.sequence_step_item", true);
             addRenderableWidget(Button.builder(Component.literal("x"), b -> {
                 draft.sequence.remove(index);
                 rebuildWidgets();
             }).bounds(left + 272, y, 20, 20).build());
         }
 
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.add_step"), b -> {
-            draft.sequence.add(blankStep());
-            scroll = Math.max(0, draft.sequence.size() - MAX_VISIBLE_STEPS);
-            rebuildWidgets();
-        }).bounds(left, STEP_TOP + MAX_VISIBLE_STEPS * STEP_HEIGHT + 4, 100, 20).build());
-
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save())
-                .bounds(left, height - 30, 100, 20).build());
+                .bounds(left, height - 26, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
-                .bounds(left + 210, height - 30, 100, 20).build());
+                .bounds(left + 210, height - 26, 100, 20).build());
+    }
+
+    /** The editor mode this screen stands in for, so its type button can walk on to the others. */
+    private static int sequenceMode() {
+        for (int i = 0; i < RecipeModes.COUNT; i++) {
+            if (RecipeModes.isSequencedAssembly(i)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     private EditBox textBox(int x, int y, int w, String value, java.util.function.Consumer<String> onChange,
-                            String hintKey) {
+                            String hintKey, boolean completesItems) {
         EditBox box = new EditBox(font, x, y, w, 16, Component.translatable(hintKey));
         box.setMaxLength(200);
         box.setValue(value);
         box.setHint(Component.translatable(hintKey));
         box.setResponder(onChange);
-        return addRenderableWidget(box);
+        addRenderableWidget(box);
+        if (completesItems) {
+            idFields.add(box);
+        }
+        return box;
     }
 
     private RecipeDraft.ResultEntry firstResult() {
@@ -157,7 +191,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     }
 
     private static IngredientValue itemOf(String raw) {
-        ResourceLocation parsed = ResourceLocation.tryParse(raw);
+        ResourceLocation parsed = ResourceLocation.tryParse(raw.trim());
         return parsed == null ? IngredientValue.empty() : IngredientValue.item(parsed);
     }
 
@@ -181,27 +215,56 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return suggestions.mouseClicked(mouseX, mouseY) || super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_TAB && suggestions.acceptFirst()) {
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         scroll = Mth.clamp(scroll - (int) Math.signum(scrollY), 0,
-                Math.max(0, draft.sequence.size() - MAX_VISIBLE_STEPS));
+                Math.max(0, draft.sequence.size() - visibleSteps()));
         rebuildWidgets();
         return true;
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // super.render draws the blurred background and the widgets; our labels go after it, or that blur
-        // would smear them (see the hub screen for the same ordering).
+        // super.render draws the blurred background and the widgets; labels go after it or that blur
+        // would smear them (same ordering as the hub screen).
         super.render(graphics, mouseX, mouseY, partialTick);
         int left = width / 2 - 155;
         graphics.drawCenteredString(font, title, width / 2, 12, 0xFFFFFF);
-        graphics.drawString(font, Component.translatable("sce.sequence.steps"), left, STEP_TOP - 12, 0xA0A0A0);
-        for (int row = 0; row < MAX_VISIBLE_STEPS && scroll + row < draft.sequence.size(); row++) {
+
+        label(graphics, "sce.sequence.label_id", left, ROW_ID);
+        label(graphics, "sce.sequence.label_base", left, ROW_PARTS);
+        label(graphics, "sce.sequence.label_transitional", left + 136, ROW_PARTS);
+        label(graphics, "sce.sequence.label_loops", left + 272, ROW_PARTS);
+        label(graphics, "sce.sequence.label_result", left, ROW_RESULT);
+        label(graphics, "sce.sequence.label_count", left + 256, ROW_RESULT);
+        graphics.drawString(font, Component.translatable("sce.sequence.steps"), left, STEPS_HEADER, 0xC0C0C0);
+
+        int visible = visibleSteps();
+        for (int row = 0; row < visible && scroll + row < draft.sequence.size(); row++) {
             graphics.drawString(font, (scroll + row + 1) + ".", left, STEP_TOP + row * STEP_HEIGHT + 6, 0xD0D0D0);
         }
         if (!status.getString().isEmpty()) {
-            graphics.drawCenteredString(font, status, width / 2, height - 44, 0xE0E070);
+            graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
         }
+        suggestions.update(idFields);
+        suggestions.render(graphics, font);
+    }
+
+    /** A caption sat just above its field, so an empty form still says what each box is for. */
+    private void label(GuiGraphics graphics, String key, int x, int fieldY) {
+        graphics.drawString(font, Component.translatable(key), x, fieldY - 10, 0x909090, false);
     }
 
     /** Called from the network layer with the server's verdict on a save request. */
