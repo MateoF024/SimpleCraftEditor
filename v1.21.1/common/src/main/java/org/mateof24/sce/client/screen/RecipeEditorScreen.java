@@ -20,6 +20,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.material.Fluid;
 import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.client.ClientEditorState;
 import org.mateof24.sce.core.edit.IngredientValue;
@@ -633,7 +634,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return new ItemStack(Items.NAME_TAG);
         }
         if (value.isFluid()) {
-            return new ItemStack(Items.BUCKET); // stand-in icon; the fluid id is in the tooltip
+            // Show the fluid's own bucket, so water reads as water rather than as an empty bucket. A fluid
+            // without one (or a whole tag of them) falls back to the empty bucket.
+            Fluid fluid = BuiltInRegistries.FLUID.get(value.id());
+            if (fluid != null && !value.isFluidTag()) {
+                ItemStack bucket = new ItemStack(fluid.getBucket());
+                if (!bucket.isEmpty()) {
+                    return bucket;
+                }
+            }
+            return new ItemStack(Items.BUCKET);
         }
         return new ItemStack(BuiltInRegistries.ITEM.get(value.id()));
     }
