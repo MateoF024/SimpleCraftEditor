@@ -32,3 +32,7 @@ roadmap.md
 /*.png
 /*.jpg
 /*.jpeg
+
+# Private technical notes. docs/ itself stays tracked because the readme image lives there,
+# so the document is ignored by name rather than the folder.
+docs/PROJECT_STATE.md
