@@ -20,9 +20,16 @@ import java.util.function.Predicate;
  * both what counts as valid and what can be offered as a suggestion. Registering a field once with the
  * rule it follows keeps the two from disagreeing.
  *
- * <p>Invalid text turns red and the field is outlined, rather than being rejected as it is typed. Half of
- * an id is invalid on the way to a valid one, so refusing keystrokes would make the field unusable; the
- * mark says the value is not usable *yet*. An empty field is never marked — nothing has been typed wrong.
+ * <p>Invalid text turns red rather than being rejected as it is typed. Half of an id is invalid on the way
+ * to a valid one, so refusing keystrokes would make the field unusable; the colour says the value is not
+ * usable *yet*. An empty field is never marked — nothing has been typed wrong.
+ *
+ * <p>Only the text changes colour. Recolouring the field's border would say it more plainly, but
+ * {@link EditBox} draws that border itself and exposes no way to tint it, and the two versions do not draw
+ * it alike — 1.21.1 blits a sprite where 1.20.1 fills a rectangle. Adding a second border around the
+ * native one reads as a rendering fault rather than a warning, so the only faithful alternative is to turn
+ * the border off and reproduce the whole widget's chrome, which risks not matching vanilla for a purely
+ * cosmetic gain.
  *
  * <p>Candidates come from the live registries, so whatever the instance has loaded is offered and nothing
  * has to be listed ahead of time.
@@ -41,7 +48,6 @@ public final class FieldAssist {
     private static final int MAX_SHOWN = 7;
     private static final int ROW_HEIGHT = 11;
     private static final int INVALID_TEXT = 0xFF5555;
-    private static final int INVALID_OUTLINE = 0xFFFF5555;
     private static final int VALID_TEXT = 0xE0E0E0;
 
     private record Field(EditBox box, Predicate<String> valid, Source source) {
@@ -196,15 +202,8 @@ public final class FieldAssist {
         return true;
     }
 
-    /** Outlines the fields holding something unusable, then draws the completion list over everything. */
+    /** Draws the completion list over everything else. */
     public void render(GuiGraphics graphics, Font font) {
-        for (Field field : fields) {
-            String text = field.box().getValue();
-            if (!text.isBlank() && !field.valid().test(text)) {
-                graphics.renderOutline(field.box().getX() - 1, field.box().getY() - 1,
-                        field.box().getWidth() + 2, field.box().getHeight() + 2, INVALID_OUTLINE);
-            }
-        }
         if (isEmpty()) {
             return;
         }
