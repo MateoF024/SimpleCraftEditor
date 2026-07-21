@@ -25,3 +25,10 @@ libs
 
 # Planning docs kept out of the repo
 roadmap.md
+
+# Images dropped at the repository root while working — icons, screenshots for the readme, textures on
+# their way somewhere else. Every one of them so far has been staged by accident and pushed. Only the
+# root is ignored, so docs/ and the mod's own assets stay tracked.
+/*.png
+/*.jpg
+/*.jpeg
