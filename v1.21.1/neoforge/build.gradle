@@ -43,10 +43,11 @@ dependencies {
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
-    // Load JEI and EMI in the dev client so their integrations can be exercised. Create is intentionally
-    // left out of the dev runtime (it drags in heavy jar-in-jar deps); it is tested in a real install.
-    modLocalRuntime fileTree(dir: integrationLibs, include: 'jei-*.jar')
-    modLocalRuntime fileTree(dir: integrationLibs, include: 'emi-*.jar')
+    // Nothing extra is loaded in the dev client. JEI, EMI and Create are compiled against above but
+    // never run here: loom leaves a file-dependency mod's inherited Minecraft methods in intermediary
+    // form, so they throw AbstractMethodError on launch, and pulling them from their own mavens instead
+    // ties every dev build to those hosts being reachable. The integrations are exercised in a real
+    // install, which is where they have to work anyway.
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionNeoForge')

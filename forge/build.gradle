@@ -45,14 +45,11 @@ dependencies {
     modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
     // Load JEI in the dev client so its integration can be exercised. Not shipped as a dependency.
-    // EMI is intentionally not loaded in the Forge dev client: Loom does not remap EMI's mixins for a
-    // file-dependency here, so its AbstractInventoryScreenMixin crashes on launch. EMI is tested on the
-    // Fabric dev client (where it is native) and works normally in a production Forge install.
-    //
-    // Create is not loaded here either. It starts, but Loom cannot remap Create's calls to methods that
-    // Registrate inherits from Minecraft, so opening the creative inventory dies with a NoSuchMethodError
-    // on ItemProviderEntry.m_5456_. Create's recipe types are tested in a real install instead.
-    modLocalRuntime fileTree(dir: integrationLibs, include: 'jei-*.jar')
+    // Nothing extra is loaded in the dev client. JEI, EMI and Create are compiled against above but
+    // never run here: loom leaves a file-dependency mod's inherited Minecraft methods in intermediary
+    // form, so they throw AbstractMethodError on launch, and pulling them from their own mavens instead
+    // ties every dev build to those hosts being reachable. The integrations are exercised in a real
+    // install, which is where they have to work anyway.
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionForge')
