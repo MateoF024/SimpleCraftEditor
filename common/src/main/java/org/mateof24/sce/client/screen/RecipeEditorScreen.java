@@ -115,11 +115,21 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             overlayOutCount[i] = 1;
             outputChance[i] = 1.0f;
         }
+        // A new cooking recipe starts at the time vanilla uses for its type. Leaving it at zero produces
+        // a recipe that crafts but divides by zero in the progress arrow of a recipe viewer.
+        if (RecipeModes.isCooking(mode)) {
+            pendingTime = RecipeModes.cooking(mode).defaultTime;
+        }
         if (base == null) {
             return;
         }
         pendingExp = base.experience;
         pendingTime = base.kind == RecipeDraft.Kind.CREATE_PROCESSING ? base.processingTime : base.cookingTime;
+        // Recipes authored before the fall-back existed can hold a zero here; show what will be saved
+        // rather than the value that is about to be replaced.
+        if (RecipeModes.isCooking(mode) && pendingTime <= 0) {
+            pendingTime = RecipeModes.cooking(mode).defaultTime;
+        }
 
         if (base.kind == RecipeDraft.Kind.CRAFTING_SHAPED || base.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
             // Row-major grids: re-index the recipe's own width onto the width this editor shows, clipping

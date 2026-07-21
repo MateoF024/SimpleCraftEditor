@@ -50,6 +50,16 @@ public final class RecipeDraft {
             this.type = type;
             this.defaultTime = defaultTime;
         }
+
+        /** The cooking kind a recipe's {@code type} names, or null if it is not a cooking recipe. */
+        public static Cooking fromType(String type) {
+            for (Cooking cooking : values()) {
+                if (cooking.type.equals(type)) {
+                    return cooking;
+                }
+            }
+            return null;
+        }
     }
 
     public Kind kind = Kind.CRAFTING_SHAPELESS;

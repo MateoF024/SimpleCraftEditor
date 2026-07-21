@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
+import org.mateof24.sce.core.edit.RecipeDraft;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -216,6 +217,7 @@ public final class RecipeStateManager {
     }
 
     private Recipe<?> parse(ResourceLocation id, JsonObject json) {
+        repairCookingTime(id, json);
         try {
             return RecipeManager.fromJson(id, json);
         } catch (Exception e) {
@@ -223,6 +225,29 @@ public final class RecipeStateManager {
             state().markBroken(id);
             return null;
         }
+    }
+
+    /**
+     * Gives a stored cooking recipe a usable cooking time. The editor used to save these with a time of
+     * zero, which crafts but makes a recipe viewer divide by it to animate its progress arrow — EMI throws
+     * and draws "Error Rendering" instead of the recipe. Recipes written back then are still on disk, so
+     * they are repaired here rather than only on the next save.
+     */
+    private void repairCookingTime(ResourceLocation id, JsonObject json) {
+        if (!json.has("type")) {
+            return;
+        }
+        RecipeDraft.Cooking cooking = RecipeDraft.Cooking.fromType(json.get("type").getAsString());
+        if (cooking == null) {
+            return;
+        }
+        int time = json.has("cookingtime") ? json.get("cookingtime").getAsInt() : 0;
+        if (time > 0) {
+            return;
+        }
+        json.addProperty("cookingtime", cooking.defaultTime);
+        SimpleCraftEditor.LOGGER.info("Gave recipe '{}' the default cooking time of {} ticks; it had none",
+                id, cooking.defaultTime);
     }
 
     /** Clears session-scoped caches when a server stops (so singleplayer world switches start clean). */
