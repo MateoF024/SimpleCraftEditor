@@ -44,6 +44,16 @@ subprojects {
         it.options.release = isLegacy ? 17 : 21
     }
 
+    // Ship the license inside every jar. The mod is all-rights-reserved with specific permissions
+    // granted, so the terms have to travel with the binary — a jar pulled out of a modpack is often the
+    // only copy anyone ever sees, and the manifests point at this file by name. Named after the mod id so
+    // it cannot collide with another license when jars are nested.
+    tasks.named('jar', Jar).configure {
+        from(rootProject.file('LICENSE.txt')) {
+            rename { 'LICENSE-sce.txt' }
+        }
+    }
+
     afterEvaluate {
         // Collect the final, remapped loader jars under the root build/libs directory.
         tasks.withType(AbstractArchiveTask).configureEach {

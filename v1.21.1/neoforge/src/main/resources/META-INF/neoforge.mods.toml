@@ -1,7 +1,7 @@
 modLoader = "javafml"
 loaderVersion = "[2,)"
 issueTrackerURL = "https://github.com/MateoF024/SimpleCraftEditor/issues"
-license = "All Rights Reserved"
+license = "LicenseRef-SimpleCraftEditor (see LICENSE-sce.txt)"
 
 [[mods]]
 modId = "sce"

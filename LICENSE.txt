@@ -1,2 +1,144 @@
-Copyright (c) 2026 MateoF24
+Simple Craft Editor License
+Version 1.0 — 2026-07-21
+
+Copyright (c) 2026 MateoF024
 All rights reserved.
+
+This software is not open source. All rights not expressly granted below are
+reserved by the copyright holder.
+
+
+-------------------------------------------------------------------------------
+SUMMARY (not part of the license; the terms below are what count)
+
+  YES  Use it, play with it, put it on any server, including a monetised one.
+  YES  Put it in a modpack — public or private — without asking first.
+  YES  Modify your own copy, as long as you keep that copy to yourself.
+  YES  Write an addon or a compatibility patch for it.
+
+  NO   Re-upload it anywhere on its own, outside a modpack.
+  NO   Distribute a modified version of it.
+  NO   Reuse its code, assets or translations in another project.
+  NO   Put its download behind a paywall or a link shortener.
+
+  Modpack authors: this section, plus section 2(c), is the permission you need.
+-------------------------------------------------------------------------------
+
+
+1. DEFINITIONS
+
+   "The Mod" means the Simple Craft Editor software, in source or compiled form,
+   together with its assets, textures, translations and documentation.
+
+   "Official Release" means a build of The Mod published by the copyright holder
+   through a channel they control.
+
+   "Modpack" means a curated collection of Minecraft mods distributed for use as
+   a single configured installation, whether public or private, free or paid,
+   and whether hosted on a platform such as CurseForge or Modrinth, distributed
+   by a launcher, or shared privately.
+
+   "Standalone" means distributed on its own, rather than as one component of a
+   Modpack.
+
+
+2. PERMITTED USE
+
+   You may:
+
+   a) Download, install and use The Mod for personal or commercial play,
+      including on a public or private server, and including a server that
+      accepts donations, sells ranks, or is otherwise monetised.
+
+   b) Modify your own copy of The Mod for your own use, and use that modified
+      copy privately or on your own server, provided you do not distribute it.
+      See 3(a).
+
+   c) Include an unmodified Official Release of The Mod in any Modpack, public
+      or private, and distribute that Modpack, without asking permission and
+      without paying a fee. If the Modpack is distributed publicly, credit The
+      Mod by name and include a link to one of its official pages.
+
+   d) Write a separate mod, addon, patch or datapack that depends on, extends or
+      interoperates with The Mod, and distribute that work under any license you
+      choose, provided it does not include The Mod or any part of it. Calling
+      The Mod's code, and depending on its behaviour, is not itself a derivative
+      work for the purposes of this license.
+
+   e) Decompile, inspect or study The Mod for personal study, for debugging, or
+      to make a separate work compatible with it.
+
+   f) Reference The Mod by name, link to its official pages, and show it in
+      videos, screenshots, reviews and other coverage, monetised or not.
+
+
+3. RESTRICTIONS
+
+   You may not:
+
+   a) Distribute a modified version of The Mod, or a work derived from it, in
+      any form. Private modification is permitted under 2(b); it is the
+      distribution that is prohibited.
+
+   b) Distribute The Mod Standalone, on any download site, mirror, repository or
+      file host. This includes re-uploading an unmodified Official Release.
+      Links to The Mod must point to an official page.
+
+   c) Extract, reuse or redistribute The Mod's source code, assets, textures or
+      translations in another project. This does not restrict 2(d).
+
+   d) Remove or alter this license, the copyright notice, or the authorship
+      information in The Mod or its metadata.
+
+   e) Place an Official Release behind a paywall, a link shortener, an ad gate,
+      or any other scheme that monetises access to the download itself. This
+      does not restrict 2(a) or 2(f).
+
+   f) Use The Mod, or any part of it, as part of a dataset for training machine
+      learning or artificial intelligence models.
+
+
+4. CONTRIBUTIONS
+
+   By submitting a contribution to this project, you grant the copyright holder
+   a perpetual, worldwide, irrevocable, royalty-free right to use, modify,
+   sublicense and distribute that contribution as part of The Mod, under this
+   license or any later license the copyright holder chooses. You keep your own
+   copyright in your contribution.
+
+
+5. RELATIONSHIP TO MINECRAFT
+
+   The Mod is a modification for Minecraft and is subject to Mojang's End User
+   License Agreement and Brand Guidelines. Nothing in this license grants any
+   right in Minecraft itself, and nothing here permits what Mojang's terms
+   forbid — including the sale of The Mod, which neither you nor the copyright
+   holder may do.
+
+   The Mod is not an official Minecraft product. It is not approved by or
+   associated with Mojang or Microsoft.
+
+
+6. PERMISSION BEYOND THIS LICENSE
+
+   Any use not permitted above may still be allowed with the written permission
+   of the copyright holder. If you want to do something this license does not
+   cover, ask: https://github.com/MateoF024/SimpleCraftEditor/issues
+
+
+7. VERSIONS OF THIS LICENSE
+
+   The copyright holder may publish revised versions of this license. Each
+   Official Release is governed by the version of this license distributed with
+   it, and a later version does not retroactively change the terms of a release
+   already published.
+
+
+8. NO WARRANTY
+
+   THE MOD IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+   IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE MOD OR THE USE OR OTHER DEALINGS IN THE MOD.

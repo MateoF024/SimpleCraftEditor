@@ -10,7 +10,7 @@
   "contact": {
     "homepage": "https://github.com/MateoF024/SimpleCraftEditor"
   },
-  "license": "All-Rights-Reserved",
+  "license": "LicenseRef-SimpleCraftEditor (see LICENSE-sce.txt)",
   "icon": "assets/sce/icon.png",
   "environment": "*",
   "entrypoints": {
