@@ -5,6 +5,8 @@ import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import dev.architectury.event.events.common.PlayerEvent;
 import dev.architectury.networking.NetworkManager;
+import dev.architectury.platform.Platform;
+import dev.architectury.utils.Env;
 import dev.architectury.registry.menu.ExtendedMenuProvider;
 import dev.architectury.registry.menu.MenuRegistry;
 import io.netty.buffer.Unpooled;
@@ -84,16 +86,22 @@ public final class SceNetworking {
     public static void init() {
         RecipeStateManager.INSTANCE.setChangeListener(SceNetworking::syncToAll);
 
-        // Declare the server-to-client channels here, on both sides, rather than only where they are
-        // received. Since 1.20.5 a payload has a registered type, and the side *sending* it needs that
-        // type as much as the side reading it. The receivers live in the client entrypoint, which a
-        // dedicated server never runs, so without this the server reached login with no type for these
-        // and threw inside Architectury while collecting the packet — the player was dropped with
-        // "Invalid player data" before ever seeing the world. Singleplayer hid it: the integrated server
-        // shares a JVM with the client, which had already registered them.
-        for (ResourceLocation channel : new ResourceLocation[]{
-                SYNC, RECIPE_JSON, OPEN_RAW, OPEN_SEQUENCE, SAVE_RESULT}) {
-            NetworkManager.registerS2CPayloadType(channel);
+        // Declare the server-to-client channels, but only where nothing else will.
+        //
+        // Since 1.20.5 a payload has a registered type, and the side *sending* it needs that type as much
+        // as the side reading it. Registering a receiver declares the type as a side effect, so on a
+        // client these are already declared by the receivers in the client entrypoint — declaring them
+        // again makes NeoForge refuse the duplicate outright ("Cannot register payload sce:sync as it is
+        // already registered") and the game does not start. A dedicated server never runs that
+        // entrypoint, so there the type would otherwise never exist and the login sync threw inside
+        // Architectury, dropping the player with "Invalid player data".
+        //
+        // The asymmetry is the point: declare here exactly when there is no receiver to do it.
+        if (Platform.getEnvironment() == Env.SERVER) {
+            for (ResourceLocation channel : new ResourceLocation[]{
+                    SYNC, RECIPE_JSON, OPEN_RAW, OPEN_SEQUENCE, SAVE_RESULT}) {
+                NetworkManager.registerS2CPayloadType(channel);
+            }
         }
 
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, SAVE, (buf, context) -> {
