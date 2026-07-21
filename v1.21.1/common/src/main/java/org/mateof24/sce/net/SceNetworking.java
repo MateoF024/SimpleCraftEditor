@@ -84,6 +84,18 @@ public final class SceNetworking {
     public static void init() {
         RecipeStateManager.INSTANCE.setChangeListener(SceNetworking::syncToAll);
 
+        // Declare the server-to-client channels here, on both sides, rather than only where they are
+        // received. Since 1.20.5 a payload has a registered type, and the side *sending* it needs that
+        // type as much as the side reading it. The receivers live in the client entrypoint, which a
+        // dedicated server never runs, so without this the server reached login with no type for these
+        // and threw inside Architectury while collecting the packet — the player was dropped with
+        // "Invalid player data" before ever seeing the world. Singleplayer hid it: the integrated server
+        // shares a JVM with the client, which had already registered them.
+        for (ResourceLocation channel : new ResourceLocation[]{
+                SYNC, RECIPE_JSON, OPEN_RAW, OPEN_SEQUENCE, SAVE_RESULT}) {
+            NetworkManager.registerS2CPayloadType(channel);
+        }
+
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, SAVE, (buf, context) -> {
             ResourceLocation id = buf.readResourceLocation();
             String json = buf.readUtf(MAX_JSON);
