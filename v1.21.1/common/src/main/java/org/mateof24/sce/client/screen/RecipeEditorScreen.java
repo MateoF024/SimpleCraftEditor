@@ -125,8 +125,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
         pendingExp = base.experience;
         pendingTime = base.kind == RecipeDraft.Kind.CREATE_PROCESSING ? base.processingTime : base.cookingTime;
-        // Recipes authored before the fall-back existed can hold a zero here; show what will be saved
-        // rather than the value that is about to be replaced.
+        // A recipe stored before this was validated can still hold a zero. It is repaired when injected,
+        // so show the time it actually has rather than one the editor would now refuse to save.
         if (RecipeModes.isCooking(mode) && pendingTime <= 0) {
             pendingTime = RecipeModes.cooking(mode).defaultTime;
         }
@@ -468,6 +468,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
             status = Component.translatable("sce.status.invalid_id");
+            return;
+        }
+        // Nothing can display a cooking recipe with no time — a viewer divides by it to animate its
+        // progress arrow — so say so now rather than saving something other than what is on screen.
+        if (RecipeModes.isCooking(mode) && pendingTime <= 0) {
+            status = Component.translatable("sce.status.time_required");
             return;
         }
         SceNetworking.sendSave(id, RecipeCompiler.toJson(buildDraft(id)).toString());

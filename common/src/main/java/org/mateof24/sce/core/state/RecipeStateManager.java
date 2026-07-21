@@ -132,7 +132,36 @@ public final class RecipeStateManager {
     }
 
     /** Stores an authored recipe (create or edit-as-override), rejecting JSON that does not parse. */
+    /**
+     * Why this recipe cannot be stored, or null if it can. A cooking recipe with no time loads and even
+     * crafts, so the recipe loader raises nothing, but no viewer can draw it: EMI divides by that time to
+     * animate its progress arrow and throws. Refusing it here reports the real problem to whoever is
+     * authoring it instead of substituting a time they did not pick.
+     */
+    private String rejectionReason(JsonObject json) {
+        if (!json.has("type")) {
+            return null;
+        }
+        RecipeDraft.Cooking cooking = RecipeDraft.Cooking.fromType(json.get("type").getAsString());
+        if (cooking == null) {
+            return null;
+        }
+        try {
+            if (json.has("cookingtime") && json.get("cookingtime").getAsInt() > 0) {
+                return null;
+            }
+        } catch (RuntimeException e) {
+            return "cooking time must be a whole number greater than 0";
+        }
+        return "cooking time must be greater than 0";
+    }
+
     public boolean saveGenerated(MinecraftServer server, ResourceLocation id, JsonObject json) {
+        String rejection = rejectionReason(json);
+        if (rejection != null) {
+            SimpleCraftEditor.LOGGER.warn("Rejected authored recipe '{}': {}", id, rejection);
+            return false;
+        }
         try {
             RecipeManager.fromJson(id, json);
         } catch (Exception e) {
@@ -217,8 +246,8 @@ public final class RecipeStateManager {
     }
 
     private Recipe<?> parse(ResourceLocation id, JsonObject json) {
-        repairCookingTime(id, json);
         try {
+            repairCookingTime(id, json);
             return RecipeManager.fromJson(id, json);
         } catch (Exception e) {
             SimpleCraftEditor.LOGGER.warn("Skipping recipe '{}' that could not be parsed: {}", id, e.getMessage());

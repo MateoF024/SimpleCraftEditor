@@ -116,10 +116,9 @@ public final class RecipeCompiler {
         json.add("ingredient", draft.input(0).toIngredientJson());
         json.add("result", stackJson(draft, 1)); // a cooking recipe always produces a single item
         json.addProperty("experience", draft.experience);
-        // A cooking time of zero is not merely instant: recipe viewers divide by it to animate their
-        // progress arrow, and EMI throws while drawing the recipe. Treat it as "unset" and fall back to
-        // the time vanilla gives this type.
-        json.addProperty("cookingtime", draft.cookingTime > 0 ? draft.cookingTime : draft.cooking.defaultTime);
+        // Written as given. A time of zero is refused before it gets here, by the editor and again by
+        // RecipeStateManager, rather than quietly replaced with a value the author did not choose.
+        json.addProperty("cookingtime", draft.cookingTime);
         return json;
     }
 

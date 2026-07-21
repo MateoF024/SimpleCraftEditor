@@ -1,9 +1,7 @@
 {
   "key.sce.open_manager": "Abrir editor de recetas",
-
   "sce.editor.title": "Editor de recetas",
   "sce.raw.title": "JSON de receta: %s",
-
   "sce.button.new_recipe": "Nueva receta…",
   "sce.button.edit": "Editar",
   "sce.button.restore": "Restaurar",
@@ -16,29 +14,26 @@
   "sce.button.clear_slot": "Vaciar casilla",
   "sce.button.type": "Tipo: %s",
   "sce.button.raw": "JSON",
-
   "sce.manager.empty": "Aún no hay recetas desactivadas ni generadas.",
   "sce.manager.unresolved": "(sin resolver)",
   "sce.manager.disabled_suffix": "(desactivada)",
-
   "sce.status.click_input_first": "Hacé clic en una casilla de entrada primero.",
   "sce.status.clear_slot_first": "Quitá el objeto de esa casilla antes de poner una etiqueta.",
   "sce.status.invalid_tag": "Id de etiqueta no válido.",
   "sce.status.invalid_id": "Id de receta no válido.",
+  "sce.status.time_required": "El tiempo de cocción debe ser mayor que 0.",
   "sce.status.saving": "Guardando %s…",
   "sce.status.saved": "%s guardada.",
   "sce.status.save_failed": "No se pudo guardar %s: receta no válida.",
   "sce.status.requested_disable": "Se solicitó desactivar %s.",
   "sce.status.invalid_json": "JSON no válido.",
   "sce.status.sent": "%s enviada al servidor.",
-
   "sce.msg.no_recipe": "[SCE] No se encontró ninguna receta para %s",
   "sce.msg.recipe_cycle": "[SCE] Receta %s/%s — %s (pulsá otra vez para la siguiente)",
   "sce.msg.parse_fail": "[SCE] No se pudo analizar el JSON de la receta.",
   "sce.msg.saved": "[SCE] Receta %s guardada",
   "sce.msg.rejected": "[SCE] La receta %s fue rechazada (definición no válida).",
   "sce.msg.no_permission": "[SCE] No tenés permiso para editar recetas.",
-
   "sce.cmd.disabled": "Receta %s desactivada",
   "sce.cmd.disable_failed": "La receta %s no está cargada o ya está desactivada.",
   "sce.cmd.enabled": "Receta %s reactivada",
