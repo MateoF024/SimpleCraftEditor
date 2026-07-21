@@ -84,9 +84,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                         SceNetworking.sendOpenEditor(idValue, RecipeModes.nextAvailable(sequenceMode())))
                 .bounds(left, ROW_TYPE, 310, 16).build());
 
-        // The recipe id is being authored, so it is checked as an id but completed against nothing.
         textBox(left, ROW_ID, 250, idValue, s -> idValue = s, "sce.hint.id", FieldAssist.id(),
-                FieldAssist.Source.NONE);
+                FieldAssist.Source.RECIPES);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b ->
                         SceNetworking.sendOpenEditor(idValue, -1))
                 .bounds(left + 256, ROW_ID, 54, 16).build());
@@ -256,7 +255,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_TAB && fields.acceptFirst()) {
+        if (fields.keyPressed(keyCode)) {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -264,6 +263,9 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (fields.mouseScrolled(scrollY)) {
+            return true;
+        }
         scroll = Mth.clamp(scroll - (int) Math.signum(scrollY), 0,
                 Math.max(0, draft.sequence.size() - visibleSteps()));
         rebuildWidgets();
@@ -294,7 +296,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
         }
         fields.update();
-        fields.render(graphics, font);
+        fields.render(graphics, font, mouseX, mouseY);
     }
 
     /** A caption sat just above its field, so an empty form still says what each box is for. */

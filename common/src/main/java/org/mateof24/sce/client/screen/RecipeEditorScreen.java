@@ -196,8 +196,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
-        // The recipe id is being authored, so there is nothing to complete it against.
-        fields.add(idBox, FieldAssist.id());
+        fields.add(idBox, FieldAssist.id(), FieldAssist.Source.RECIPES);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
                 .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
@@ -317,11 +316,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
-        if (key == GLFW.GLFW_KEY_ESCAPE) {
-            onClose();
+        // While the completion list is open it owns the arrows, tab, enter and escape, so escape
+        // dismisses the list before it closes the screen.
+        if (fields.keyPressed(key)) {
             return true;
         }
-        if (key == GLFW.GLFW_KEY_TAB && fields.acceptFirst()) {
+        if (key == GLFW.GLFW_KEY_ESCAPE) {
+            onClose();
             return true;
         }
         if (getFocused() instanceof EditBox editBox) {
@@ -753,7 +754,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         fields.update();
-        fields.render(graphics, font);
+        fields.render(graphics, font, mouseX, mouseY);
         if (!menu.getCarried().isEmpty()) {
             return;
         }
