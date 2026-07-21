@@ -50,30 +50,23 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         this.inputCount = RecipeModes.inputCount(this.mode);
         this.outputCount = RecipeModes.outputCount(this.mode);
 
-        boolean create = RecipeModes.isCreate(this.mode);
-        boolean mechanical = RecipeModes.isMechanicalCrafting(this.mode);
-        boolean single = !RecipeModes.isCrafting(this.mode) && !create && !mechanical;
-        int columns = mechanical ? RecipeDraft.MECHANICAL_SIZE : 3;
+        // Slot positions come from the shared layout so they line up with the widgets the screen puts
+        // around them, which are placed from the same numbers.
+        EditorLayout layout = new EditorLayout(this.mode);
         for (int i = 0; i < inputCount; i++) {
-            int x = single ? 60 : 44 + (i % columns) * 18;
-            int y = single ? 58 : 42 + (i / columns) * 18;
-            addSlot(new Slot(grid, i, x, y));
+            addSlot(new Slot(grid, i, layout.inputSlotX(i), layout.inputSlotY(i)));
         }
         for (int i = 0; i < outputCount; i++) {
-            // Mechanical crafting has a single result, sat beside its taller grid.
-            int x = single ? 140 : (create ? 150 + (i % 2) * 18 : 150);
-            int y = single ? 58 : (create ? 42 + (i / 2) * 18 : (mechanical ? 78 : 60));
-            addSlot(new Slot(output, i, x, y));
+            addSlot(new Slot(output, i, layout.outputSlotX(i), layout.outputSlotY(i)));
         }
 
-        // The inventory sits below the tag and fluid rows; keep in sync with the panel texture height.
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, 158 + row * 18));
+                addSlot(new Slot(inventory, 9 + row * 9 + col, 39 + col * 18, EditorLayout.INVENTORY_Y + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 39 + col * 18, 218));
+            addSlot(new Slot(inventory, col, 39 + col * 18, EditorLayout.HOTBAR_Y));
         }
     }
 

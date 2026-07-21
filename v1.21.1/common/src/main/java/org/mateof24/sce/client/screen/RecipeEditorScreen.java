@@ -27,6 +27,7 @@ import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
+import org.mateof24.sce.menu.EditorLayout;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 import org.mateof24.sce.net.SceNetworking;
 
@@ -54,6 +55,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private final int outputCount;
     private final boolean create;
     private final boolean mechanical;
+    /** Where the slots and the rows around them sit for this recipe type; rebuilt with the widgets. */
+    private EditorLayout layout;
     /** Mechanical crafting only: whether Create should also match the pattern mirrored. */
     private boolean mirrored;
 
@@ -88,13 +91,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = 240;
-        this.imageHeight = 266;
+        this.imageWidth = EditorLayout.WIDTH;
+        this.imageHeight = EditorLayout.HEIGHT;
         this.mode = menu.mode();
         this.inputCount = menu.inputCount();
         this.outputCount = menu.outputCount();
         this.create = RecipeModes.isCreate(mode);
         this.mechanical = RecipeModes.isMechanicalCrafting(mode);
+        this.layout = new EditorLayout(mode);
         this.overlayOut = new IngredientValue[outputCount];
         this.overlayOutCount = new int[outputCount];
         this.outputChance = new float[outputCount];
@@ -168,6 +172,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     @Override
     protected void init() {
         super.init();
+        layout = new EditorLayout(mode);
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.type", Component.translatable(RecipeModes.labelKey(mode))), b ->
                 reopen(RecipeModes.nextAvailable(mode)))
@@ -181,8 +186,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
                 .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
-        // Mechanical crafting's grid is taller, so its tag row sits below it.
-        int tagRowY = mechanical ? 136 : 98;
+        int tagRowY = layout.tagRowY;
         tagBox = new EditBox(font, leftPos + 8, topPos + tagRowY, 98, 16, Component.translatable("sce.hint.tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tagValue);
@@ -200,15 +204,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     Component.translatable(mirrored ? "sce.toggle.on" : "sce.toggle.off")), b -> {
                 mirrored = !mirrored;
                 rebuildWidgets();
-            }).bounds(leftPos + 148, topPos + 100, 84, 16).build());
+            }).bounds(leftPos + EditorLayout.WIDTH - EditorLayout.PADDING - 84, topPos + layout.mirroredY, 84, 16).build());
         }
 
         if (RecipeModes.isCooking(mode)) {
-            expBox = new EditBox(font, leftPos + 190, topPos + 42, 42, 16, Component.translatable("sce.hint.exp"));
+            expBox = new EditBox(font, leftPos + layout.sideX, topPos + layout.expY,
+                    EditorLayout.SIDE_FIELD_WIDTH, 16, Component.translatable("sce.hint.exp"));
             expBox.setValue(Float.toString(pendingExp));
             expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
             addRenderableWidget(expBox);
-            timeBox = new EditBox(font, leftPos + 190, topPos + 66, 42, 16, Component.translatable("sce.hint.time"));
+            timeBox = new EditBox(font, leftPos + layout.sideX, topPos + layout.sideTimeY,
+                    EditorLayout.SIDE_FIELD_WIDTH, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
@@ -216,7 +222,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         if (create) {
             // Create's grid is only two rows tall, so its extra controls sit in the free row below it.
-            chanceBox = new EditBox(font, leftPos + 52, topPos + 80, 36, 16, Component.translatable("sce.hint.chance"));
+            chanceBox = new EditBox(font, leftPos + 52, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.chance"));
             chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
             chanceBox.setResponder(s -> {
                 if (selectedOutput >= 0) {
@@ -224,7 +230,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             });
             addRenderableWidget(chanceBox);
-            timeBox = new EditBox(font, leftPos + 124, topPos + 80, 36, 16, Component.translatable("sce.hint.time"));
+            timeBox = new EditBox(font, leftPos + 124, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
@@ -232,28 +238,28 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
                     rebuildWidgets();
-                }).bounds(leftPos + 164, topPos + 80, 68, 16).build());
+                }).bounds(leftPos + 164, topPos + layout.extraRowY, 68, 16).build());
             }
 
             // Only Create takes fluids, and it takes them as an amount rather than as a bucket item.
-            fluidBox = new EditBox(font, leftPos + 8, topPos + 118, 110, 16, Component.translatable("sce.hint.fluid"));
+            fluidBox = new EditBox(font, leftPos + 8, topPos + layout.fluidRowY, 110, 16, Component.translatable("sce.hint.fluid"));
             fluidBox.setMaxLength(200);
             fluidBox.setValue(fluidValue);
             fluidBox.setHint(Component.translatable("sce.hint.fluid_id"));
             fluidBox.setResponder(s -> fluidValue = s);
             addRenderableWidget(fluidBox);
-            fluidAmountBox = new EditBox(font, leftPos + 122, topPos + 118, 40, 16, Component.translatable("sce.hint.amount"));
+            fluidAmountBox = new EditBox(font, leftPos + 122, topPos + layout.fluidRowY, 40, 16, Component.translatable("sce.hint.amount"));
             fluidAmountBox.setValue(fluidAmountValue);
             fluidAmountBox.setResponder(s -> fluidAmountValue = s);
             addRenderableWidget(fluidAmountBox);
             addRenderableWidget(Button.builder(Component.translatable("sce.button.set_fluid"), b -> applyFluid())
-                    .bounds(leftPos + 166, topPos + 118, 66, 16).build());
+                    .bounds(leftPos + 166, topPos + layout.fluidRowY, 66, 16).build());
         }
 
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + 238,52, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + 238,58, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + 238,40, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + 238,62, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + EditorLayout.BUTTON_ROW_Y, 52, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + EditorLayout.BUTTON_ROW_Y, 58, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + EditorLayout.BUTTON_ROW_Y, 40, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + EditorLayout.BUTTON_ROW_Y, 62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
         // put it back where it was so cycling the type/loading doesn't yank the mouse to the middle.
@@ -688,16 +694,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         if (RecipeModes.isCooking(mode)) {
-            graphics.drawString(font, Component.translatable("sce.label.xp"), 174, 46, 0x404040, false);
-            graphics.drawString(font, Component.translatable("sce.label.time"), 166, 70, 0x404040, false);
+            // Right-aligned against their fields, so the pair reads as one column wherever the layout
+            // put it rather than needing a position of its own.
+            drawRightAligned(graphics, Component.translatable("sce.label.xp"), layout.sideX - 4, layout.expY + 4);
+            drawRightAligned(graphics, Component.translatable("sce.label.time"), layout.sideX - 4, layout.sideTimeY + 4);
         }
         if (create) {
-            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, 84, 0x404040, false);
-            graphics.drawString(font, Component.translatable("sce.label.time"), 96, 84, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0x404040, false);
         }
         if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, imageWidth / 2, imageHeight + 4, 0xE0E070);
         }
+    }
+
+    private void drawRightAligned(GuiGraphics graphics, Component text, int right, int y) {
+        graphics.drawString(font, text, right - font.width(text), y, 0x404040, false);
     }
 
     @Override
