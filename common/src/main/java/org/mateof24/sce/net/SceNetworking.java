@@ -3,6 +3,7 @@ package org.mateof24.sce.net;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.architectury.event.events.common.PlayerEvent;
+import dev.architectury.event.events.common.TickEvent;
 import dev.architectury.networking.NetworkManager;
 import dev.architectury.registry.menu.ExtendedMenuProvider;
 import dev.architectury.registry.menu.MenuRegistry;
@@ -48,6 +49,9 @@ public final class SceNetworking {
     public static final ResourceLocation SAVE_RESULT = channel("save_result");
 
     private static final int MAX_JSON = 1024 * 1024;
+
+    /** Last permission answer sent to each player, so a change can be noticed and pushed. */
+    private static final Map<java.util.UUID, Boolean> lastPermission = new java.util.HashMap<>();
 
     private SceNetworking() {
     }
@@ -101,10 +105,12 @@ public final class SceNetworking {
         });
 
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
+        PlayerEvent.PLAYER_QUIT.register(player -> lastPermission.remove(player.getUUID()));
+        TickEvent.SERVER_POST.register(SceNetworking::trackPermissions);
     }
 
     private static void handleSave(net.minecraft.world.entity.player.Player sender, ResourceLocation id, String json) {
-        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             deny(sender);
             return;
         }
@@ -130,7 +136,7 @@ public final class SceNetworking {
     }
 
     private static void handleRequestJson(net.minecraft.world.entity.player.Player sender, ResourceLocation id) {
-        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             return;
         }
         JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
@@ -141,7 +147,7 @@ public final class SceNetworking {
     }
 
     private static void handleOpenEditor(Player sender, String idString, int requestedMode) {
-        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             deny(sender);
             return;
         }
@@ -206,7 +212,7 @@ public final class SceNetworking {
     }
 
     private static void ifAllowed(net.minecraft.world.entity.player.Player sender, java.util.function.Consumer<ServerPlayer> action) {
-        if (sender instanceof ServerPlayer player && player.hasPermissions(2)) {
+        if (sender instanceof ServerPlayer player && mayEdit(player)) {
             action.accept(player);
         } else {
             deny(sender);
@@ -218,6 +224,47 @@ public final class SceNetworking {
     }
 
     // ------------------------------------------------------------------ server -> client sync
+
+    // ------------------------------------------------------------------ permission
+
+    /**
+     * Whether a player may use the editor at all. Two conditions, both required.
+     *
+     * <p>The first is operator level, which also covers a world with cheats on: opening to LAN with
+     * cheats, or a singleplayer world created with them, is what raises the level. The second is the game
+     * mode — editing recipes is an authoring act, and doing it while playing survival is almost always a
+     * mistake rather than an intent, so an operator in survival or adventure is refused the same as
+     * anyone else.
+     *
+     * <p>Evaluated fresh every time. It is deliberately never cached server-side: a player can be opped,
+     * given cheats or switched out of survival at any moment, and the answer has to change with them.
+     */
+    public static boolean mayEdit(Player player) {
+        return player.hasPermissions(2) && (player.isCreative() || player.isSpectator());
+    }
+
+    /**
+     * Pushes a fresh sync to any player whose permission has changed since the last one.
+     *
+     * <p>The client hides the editor entirely when it may not be used, and it learns that from the sync.
+     * Sending it only on join meant a player opped mid-session, or one switching to creative, kept the
+     * old answer until they reconnected — and on a LAN world reconnecting closes the world, so enabling
+     * cheats could never take effect at all. Checked once a second, which is imperceptible and costs a
+     * permission lookup per player.
+     */
+    private static void trackPermissions(MinecraftServer server) {
+        if (server.getTickCount() % 20 != 0) {
+            return;
+        }
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            boolean allowed = mayEdit(player);
+            Boolean last = lastPermission.get(player.getUUID());
+            if (last == null || last != allowed) {
+                lastPermission.put(player.getUUID(), allowed);
+                syncTo(player);
+            }
+        }
+    }
 
     public static void syncToAll(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -233,7 +280,7 @@ public final class SceNetworking {
         RecipeStateManager manager = RecipeStateManager.INSTANCE;
         FriendlyByteBuf buf = buffer();
 
-        buf.writeBoolean(player.hasPermissions(2)); // whether this player may open the editor at all
+        buf.writeBoolean(mayEdit(player)); // whether this player may open the editor at all
 
         Map<ResourceLocation, JsonObject> disabled = manager.state().disabled();
         buf.writeVarInt(disabled.size());
@@ -301,7 +348,7 @@ public final class SceNetworking {
     }
 
     private static void handleSetSlot(Player sender, int slotId, ItemStack stack) {
-        if (!(sender instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             return;
         }
         if (player.containerMenu instanceof RecipeEditorMenu menu

@@ -5,6 +5,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.architectury.event.events.common.CommandRegistrationEvent;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
@@ -13,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import org.mateof24.sce.core.state.RecipeState;
 import org.mateof24.sce.core.state.RecipeStateManager;
+import org.mateof24.sce.net.SceNetworking;
 
 import java.util.Collection;
 import java.util.stream.Collectors;
@@ -29,8 +31,22 @@ public final class SceCommands {
         CommandRegistrationEvent.EVENT.register((dispatcher, registry, selection) -> build(dispatcher));
     }
 
+    /**
+     * The same rule the editor screens follow, so a command cannot do what the interface refuses.
+     *
+     * <p>The console and command blocks are exempt from the game-mode half: they have no game mode, and
+     * the rule exists to stop a player editing recipes while playing, not to stop a server operator
+     * scripting one.
+     */
+    private static boolean mayUse(CommandSourceStack source) {
+        if (!source.hasPermission(2)) {
+            return false;
+        }
+        return !(source.getEntity() instanceof Player player) || SceNetworking.mayEdit(player);
+    }
+
     private static void build(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("sce").requires(source -> source.hasPermission(2))
+        dispatcher.register(Commands.literal("sce").requires(SceCommands::mayUse)
                 .then(Commands.literal("disable")
                         .then(Commands.argument("recipe", ResourceLocationArgument.id())
                                 .suggests(suggestExisting())
