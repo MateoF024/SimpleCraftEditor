@@ -1,7 +1,6 @@
 {
   "key.categories.sce": "Simple Craft Editor",
   "key.sce.open_manager": "Open Recipe Editor",
-
   "sce.manager.title": "Simple Craft Editor",
   "sce.editor.title": "Recipe Editor",
   "sce.raw.title": "Raw Recipe: %s",
@@ -13,7 +12,6 @@
   "sce.sequence.label_loops": "Loops",
   "sce.sequence.label_result": "Result",
   "sce.sequence.label_count": "Count",
-
   "sce.button.new_recipe": "New Recipe…",
   "sce.button.edit": "Edit",
   "sce.button.restore": "Restore",
@@ -31,11 +29,9 @@
   "sce.button.add_step": "+ Add Step",
   "sce.button.type": "Type: %s",
   "sce.button.heat": "Heat: %s",
-
   "sce.manager.empty": "No disabled or generated recipes yet.",
   "sce.manager.unresolved": "(unresolved)",
   "sce.manager.disabled_suffix": "(disabled)",
-
   "sce.hint.id": "id",
   "sce.hint.tag": "tag",
   "sce.hint.tag_id": "tag id",
@@ -51,18 +47,14 @@
   "sce.hint.time": "time",
   "sce.hint.chance": "chance",
   "sce.hint.recipe_json": "recipe json",
-
   "sce.label.xp": "xp",
   "sce.label.time": "time",
   "sce.label.chance": "chance",
-
   "sce.toggle.on": "On",
   "sce.toggle.off": "Off",
-
   "sce.heat.none": "None",
   "sce.heat.heated": "Heated",
   "sce.heat.superheated": "Super",
-
   "sce.mode.shapeless": "Shapeless",
   "sce.mode.shaped": "Shaped",
   "sce.mode.smelting": "Smelting",
@@ -75,19 +67,16 @@
   "sce.mode.create_milling": "Create: Milling",
   "sce.mode.create_pressing": "Create: Pressing",
   "sce.mode.create_compacting": "Create: Compacting",
-  "sce.mode.create_cutting": "Create: Cutting",
-  "sce.mode.create_splashing": "Create: Splashing",
-  "sce.mode.create_haunting": "Create: Haunting",
-  "sce.mode.create_sandpaper": "Create: Sandpaper",
+  "sce.mode.create_cutting": "Create: Sawing",
+  "sce.mode.create_splashing": "Create: Bulk Washing",
+  "sce.mode.create_haunting": "Create: Bulk Haunting",
+  "sce.mode.create_sandpaper": "Create: Sandpaper Polishing",
   "sce.mode.create_deploying": "Create: Deploying",
-  "sce.mode.create_filling": "Create: Filling",
-  "sce.mode.create_emptying": "Create: Emptying",
-  "sce.mode.create_basin": "Create: Basin",
-  "sce.mode.create_conversion": "Create: Conversion",
-  "sce.mode.create_item_application": "Create: Item Application",
+  "sce.mode.create_filling": "Create: Filling by Spout",
+  "sce.mode.create_emptying": "Create: Item Draining",
+  "sce.mode.create_item_application": "Create: Manual Item Application",
   "sce.mode.create_mechanical_crafting": "Create: Mechanical Crafting",
-  "sce.mode.create_sequenced_assembly": "Create: Sequenced Assembly",
-
+  "sce.mode.create_sequenced_assembly": "Create: Recipe Sequence",
   "sce.status.click_input_first": "Click an input slot first.",
   "sce.status.clear_slot_first": "Clear the item out of that slot before setting a tag.",
   "sce.status.invalid_tag": "Invalid tag id.",
@@ -103,14 +92,12 @@
   "sce.status.requested_disable": "Requested disable of %s.",
   "sce.status.invalid_json": "Invalid JSON.",
   "sce.status.sent": "Sent %s to the server.",
-
   "sce.msg.no_recipe": "[SCE] No recipe found for %s",
   "sce.msg.recipe_cycle": "[SCE] Recipe %s/%s — %s (press again for the next one)",
   "sce.msg.parse_fail": "[SCE] Could not parse recipe JSON.",
   "sce.msg.saved": "[SCE] Saved recipe %s",
   "sce.msg.rejected": "[SCE] Recipe %s was rejected (invalid definition).",
   "sce.msg.no_permission": "[SCE] You do not have permission to edit recipes.",
-
   "sce.cmd.disabled": "Disabled recipe %s",
   "sce.cmd.disable_failed": "Recipe %s is not loaded, or is already disabled.",
   "sce.cmd.enabled": "Re-enabled recipe %s",

@@ -6,122 +6,122 @@ import dev.architectury.platform.Platform;
  * The selectable recipe types in the editor and the slot layout each one uses. Shared by the menu (which
  * builds the right slots server-side) and the screen (which labels the type button and compiles the draft).
  * Create processing types are only offered when Create is installed.
+ *
+ * <p>Only types something can actually craft are listed. Create registers two more — {@code create:basin}
+ * and {@code create:conversion} — that look like recipe types but are not: {@code BasinRecipe} is the
+ * shared parent of mixing and compacting rather than a recipe any machine looks up, and
+ * {@code ConversionRecipe} lives in Create's JEI plugin and is built in code to illustrate the chromatic
+ * compound, never read from a datapack. Create's own JEI integration registers a category for neither, so
+ * a recipe authored as either would load, craft nothing, and never appear in a recipe viewer.
+ *
+ * <p>Labels use the names Create's own JEI categories display, so what the editor calls a type matches
+ * what a player reads in the recipe viewer. Several differ from the id: {@code create:cutting} is Sawing,
+ * {@code create:splashing} is Bulk Washing, {@code create:emptying} is Item Draining, and
+ * {@code create:sequenced_assembly} is Recipe Sequence.
  */
 public final class RecipeModes {
-    private static final RecipeDraft.Kind[] KIND = {
-            RecipeDraft.Kind.CRAFTING_SHAPELESS, RecipeDraft.Kind.CRAFTING_SHAPED,
-            RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING, RecipeDraft.Kind.COOKING,
-            RecipeDraft.Kind.STONECUTTING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.CREATE_PROCESSING, RecipeDraft.Kind.CREATE_PROCESSING,
-            RecipeDraft.Kind.MECHANICAL_CRAFTING, RecipeDraft.Kind.SEQUENCED_ASSEMBLY};
-    private static final RecipeDraft.Cooking[] COOK = {
-            null, null, RecipeDraft.Cooking.SMELTING, RecipeDraft.Cooking.BLASTING,
-            RecipeDraft.Cooking.SMOKING, RecipeDraft.Cooking.CAMPFIRE, null,
-            null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null};
-    private static final String[] CREATE_TYPE = {
-            null, null, null, null, null, null, null,
-            "create:mixing", "create:crushing", "create:milling", "create:pressing", "create:compacting",
-            "create:cutting", "create:splashing", "create:haunting", "create:sandpaper_polishing", "create:deploying",
-            // Spout, Item Drain, Basin, and the two item-swap machines: all plain processing recipes, so they
-            // share the ingredient/result layout of the types above.
-            "create:filling", "create:emptying", "create:basin", "create:conversion", "create:item_application",
-            "create:mechanical_crafting", SequencedAssemblyCompiler.TYPE};
-    private static final String[] LABEL_KEY = {
-            "sce.mode.shapeless", "sce.mode.shaped", "sce.mode.smelting", "sce.mode.blasting",
-            "sce.mode.smoking", "sce.mode.campfire", "sce.mode.stonecutting",
-            "sce.mode.create_mixing", "sce.mode.create_crushing", "sce.mode.create_milling",
-            "sce.mode.create_pressing", "sce.mode.create_compacting", "sce.mode.create_cutting",
-            "sce.mode.create_splashing", "sce.mode.create_haunting", "sce.mode.create_sandpaper",
-            "sce.mode.create_deploying",
-            "sce.mode.create_filling", "sce.mode.create_emptying", "sce.mode.create_basin",
-            "sce.mode.create_conversion", "sce.mode.create_item_application",
-            "sce.mode.create_mechanical_crafting", "sce.mode.create_sequenced_assembly"};
-    private static final int[] INPUTS = {
-            9, 9, 1, 1, 1, 1, 1,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6,
-            RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE,
-            1}; // sequenced assembly is edited on its own screen, not on the slot grid
-    private static final int[] OUTPUTS = {
-            1, 1, 1, 1, 1, 1, 1,
-            4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4,
-            1, 1};
-
-    public static final int COUNT = KIND.length;
-    private static final int FIRST_CREATE = 7;
-
-    static {
-        // The six tables above are indexed by mode and must stay the same length: a short one throws
-        // deep inside the editor when a mode is cycled onto. Failing here instead names the problem at
-        // load time, which is the only place anyone adding a recipe type will be looking.
-        if (COOK.length != COUNT || CREATE_TYPE.length != COUNT || LABEL_KEY.length != COUNT
-                || INPUTS.length != COUNT || OUTPUTS.length != COUNT) {
-            throw new IllegalStateException("SCE recipe mode tables disagree: KIND=" + COUNT
-                    + ", COOK=" + COOK.length + ", CREATE_TYPE=" + CREATE_TYPE.length
-                    + ", LABEL_KEY=" + LABEL_KEY.length + ", INPUTS=" + INPUTS.length
-                    + ", OUTPUTS=" + OUTPUTS.length);
-        }
+    /**
+     * One selectable type. Held as a table of rows rather than as parallel arrays: a row cannot fall out
+     * of step with itself, which the six arrays this replaced could and did whenever a type was added.
+     */
+    private record Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType,
+                        String labelKey, int inputs, int outputs) {
     }
+
+    private static final int CREATE_INPUTS = 6;
+    private static final int CREATE_OUTPUTS = 4;
+    private static final int MECHANICAL_SLOTS = RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE;
+
+    private static final Mode[] MODES = {
+            new Mode(RecipeDraft.Kind.CRAFTING_SHAPELESS, null, null, "sce.mode.shapeless", 9, 1),
+            new Mode(RecipeDraft.Kind.CRAFTING_SHAPED, null, null, "sce.mode.shaped", 9, 1),
+            new Mode(RecipeDraft.Kind.COOKING, RecipeDraft.Cooking.SMELTING, null, "sce.mode.smelting", 1, 1),
+            new Mode(RecipeDraft.Kind.COOKING, RecipeDraft.Cooking.BLASTING, null, "sce.mode.blasting", 1, 1),
+            new Mode(RecipeDraft.Kind.COOKING, RecipeDraft.Cooking.SMOKING, null, "sce.mode.smoking", 1, 1),
+            new Mode(RecipeDraft.Kind.COOKING, RecipeDraft.Cooking.CAMPFIRE, null, "sce.mode.campfire", 1, 1),
+            new Mode(RecipeDraft.Kind.STONECUTTING, null, null, "sce.mode.stonecutting", 1, 1),
+
+            // Create's processing machines. All share the ingredient/result layout.
+            create("create:mixing", "sce.mode.create_mixing"),
+            create("create:crushing", "sce.mode.create_crushing"),
+            create("create:milling", "sce.mode.create_milling"),
+            create("create:pressing", "sce.mode.create_pressing"),
+            create("create:compacting", "sce.mode.create_compacting"),
+            create("create:cutting", "sce.mode.create_cutting"),
+            create("create:splashing", "sce.mode.create_splashing"),
+            create("create:haunting", "sce.mode.create_haunting"),
+            create("create:sandpaper_polishing", "sce.mode.create_sandpaper"),
+            create("create:deploying", "sce.mode.create_deploying"),
+            create("create:filling", "sce.mode.create_filling"),
+            create("create:emptying", "sce.mode.create_emptying"),
+            create("create:item_application", "sce.mode.create_item_application"),
+
+            new Mode(RecipeDraft.Kind.MECHANICAL_CRAFTING, null, "create:mechanical_crafting",
+                    "sce.mode.create_mechanical_crafting", MECHANICAL_SLOTS, 1),
+            // Sequenced assembly is edited on its own screen, not on the slot grid.
+            new Mode(RecipeDraft.Kind.SEQUENCED_ASSEMBLY, null, SequencedAssemblyCompiler.TYPE,
+                    "sce.mode.create_sequenced_assembly", 1, 1)};
+
+    public static final int COUNT = MODES.length;
+    private static final int FIRST_CREATE = 7;
 
     private RecipeModes() {
     }
 
+    private static Mode create(String createType, String labelKey) {
+        return new Mode(RecipeDraft.Kind.CREATE_PROCESSING, null, createType, labelKey,
+                CREATE_INPUTS, CREATE_OUTPUTS);
+    }
+
     public static RecipeDraft.Kind kind(int mode) {
-        return KIND[clamp(mode)];
+        return MODES[clamp(mode)].kind();
     }
 
     public static RecipeDraft.Cooking cooking(int mode) {
-        RecipeDraft.Cooking cooking = COOK[clamp(mode)];
+        RecipeDraft.Cooking cooking = MODES[clamp(mode)].cooking();
         return cooking != null ? cooking : RecipeDraft.Cooking.SMELTING;
     }
 
     /** Translation key for a mode's display name (e.g. {@code sce.mode.shapeless}). */
     public static String labelKey(int mode) {
-        return LABEL_KEY[clamp(mode)];
+        return MODES[clamp(mode)].labelKey();
     }
 
     public static String createType(int mode) {
-        return CREATE_TYPE[clamp(mode)];
+        return MODES[clamp(mode)].createType();
     }
 
     public static boolean isCrafting(int mode) {
-        RecipeDraft.Kind kind = KIND[clamp(mode)];
+        RecipeDraft.Kind kind = MODES[clamp(mode)].kind();
         return kind == RecipeDraft.Kind.CRAFTING_SHAPED || kind == RecipeDraft.Kind.CRAFTING_SHAPELESS;
     }
 
     public static boolean isCooking(int mode) {
-        return KIND[clamp(mode)] == RecipeDraft.Kind.COOKING;
+        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.COOKING;
     }
 
     public static boolean isCreate(int mode) {
-        return KIND[clamp(mode)] == RecipeDraft.Kind.CREATE_PROCESSING;
+        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.CREATE_PROCESSING;
     }
 
     /** Create's mechanical crafter: a shaped recipe on a grid bigger than the vanilla 3x3. */
     public static boolean isMechanicalCrafting(int mode) {
-        return KIND[clamp(mode)] == RecipeDraft.Kind.MECHANICAL_CRAFTING;
+        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.MECHANICAL_CRAFTING;
     }
 
     /** Sequenced assembly is edited on a dedicated screen rather than the shared slot layout. */
     public static boolean isSequencedAssembly(int mode) {
-        return KIND[clamp(mode)] == RecipeDraft.Kind.SEQUENCED_ASSEMBLY;
+        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.SEQUENCED_ASSEMBLY;
     }
 
     /**
-     * Whether a Create recipe type has an editor mode. Types without one (sequenced assembly and the
-     * niche machines) must not be parsed into a draft: they would load as the wrong mode and lose the
-     * fields this editor does not model, so they go to the raw JSON editor instead.
+     * Whether a Create recipe type has an editor mode. Types without one must not be parsed into a draft:
+     * they would load as the wrong mode and lose the fields this editor does not model, so they go to the
+     * raw JSON editor instead.
      */
     public static boolean hasCreateType(String createType) {
         for (int i = FIRST_CREATE; i < COUNT; i++) {
-            if (CREATE_TYPE[i].equals(createType)) {
+            if (MODES[i].createType().equals(createType)) {
                 return true;
             }
         }
@@ -129,11 +129,11 @@ public final class RecipeModes {
     }
 
     public static int inputCount(int mode) {
-        return INPUTS[clamp(mode)];
+        return MODES[clamp(mode)].inputs();
     }
 
     public static int outputCount(int mode) {
-        return OUTPUTS[clamp(mode)];
+        return MODES[clamp(mode)].outputs();
     }
 
     public static int clamp(int mode) {
@@ -183,30 +183,22 @@ public final class RecipeModes {
     public static int indexOf(RecipeDraft draft) {
         if (draft.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
             for (int i = FIRST_CREATE; i < COUNT; i++) {
-                if (CREATE_TYPE[i].equals(draft.createType)) {
+                if (MODES[i].createType().equals(draft.createType)) {
                     return i;
                 }
             }
             return FIRST_CREATE;
         }
-        if (draft.kind == RecipeDraft.Kind.SEQUENCED_ASSEMBLY) {
+        if (draft.kind == RecipeDraft.Kind.SEQUENCED_ASSEMBLY || draft.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
             for (int i = FIRST_CREATE; i < COUNT; i++) {
-                if (KIND[i] == RecipeDraft.Kind.SEQUENCED_ASSEMBLY) {
-                    return i;
-                }
-            }
-            return 0;
-        }
-        if (draft.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
-            for (int i = FIRST_CREATE; i < COUNT; i++) {
-                if (KIND[i] == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
+                if (MODES[i].kind() == draft.kind) {
                     return i;
                 }
             }
             return 0;
         }
         for (int i = 0; i < FIRST_CREATE; i++) {
-            if (KIND[i] == draft.kind && (COOK[i] == null || COOK[i] == draft.cooking)) {
+            if (MODES[i].kind() == draft.kind && (MODES[i].cooking() == null || MODES[i].cooking() == draft.cooking)) {
                 return i;
             }
         }
