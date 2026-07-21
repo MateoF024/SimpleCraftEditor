@@ -123,10 +123,15 @@ public final class FieldAssist {
     // ------------------------------------------------------------------ per-frame
 
     /**
-     * Recolours every field and recomputes the completions for whichever one has focus. Call once a frame
-     * before {@link #render}.
+     * Recolours every field, recomputes the completions for whichever one has focus, and takes the
+     * pointer's row as the highlight.
+     *
+     * <p>Call this <em>before</em> the widgets are drawn. Everything it decides — the text colour and the
+     * ghost text — is read by {@link EditBox} as it draws itself, so deciding afterwards leaves the field
+     * showing the previous frame's answer: while typing, the ghost text is one character too long for a
+     * frame and the whole line appears to jump right and snap back.
      */
-    public void update() {
+    public void update(int mouseX, int mouseY) {
         EditBox focused = null;
         Source source = Source.NONE;
         for (Field field : fields) {
@@ -152,7 +157,21 @@ public final class FieldAssist {
         // back to the top on every keystroke.
         selected = Math.max(0, matches.indexOf(previous));
         clampOffset();
-        updateGhost(typed);
+        hover(mouseX, mouseY);
+        updateGhost(target.getValue());
+    }
+
+    /** Moves the highlight to the row the pointer is over, if it is over one. */
+    private void hover(int mouseX, int mouseY) {
+        if (matches.isEmpty()) {
+            return;
+        }
+        int row = (int) ((mouseY - popupTop()) / LINE_HEIGHT);
+        int x = target.getX() - 1;
+        if (row >= 0 && row < shownCount() && mouseX >= x && mouseX <= x + width()) {
+            selected = offset + row;
+            clampOffset();
+        }
     }
 
     private void collect(Source source, String text) {
@@ -338,8 +357,8 @@ public final class FieldAssist {
 
     // ------------------------------------------------------------------ drawing
 
-    /** Draws the completion list over everything else, highlighting the row the pointer is over. */
-    public void render(GuiGraphics graphics, Font font, int mouseX, int mouseY) {
+    /** Draws the completion list over everything else. */
+    public void render(GuiGraphics graphics, Font font) {
         if (isEmpty()) {
             return;
         }
@@ -347,12 +366,6 @@ public final class FieldAssist {
         int top = popupTop();
         int w = width();
         int rows = shownCount();
-
-        int hovered = (int) ((mouseY - top) / LINE_HEIGHT);
-        if (hovered >= 0 && hovered < rows && mouseX >= x && mouseX <= x + w) {
-            selected = offset + hovered;
-            updateGhost(target.getValue());
-        }
 
         // Text queued in the same batch does not respect draw order, so lift the popup above the fields
         // it overlaps rather than relying on being drawn last.

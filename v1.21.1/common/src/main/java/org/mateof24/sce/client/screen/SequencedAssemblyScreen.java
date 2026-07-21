@@ -276,6 +276,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // super.render draws the blurred background and the widgets; labels go after it or that blur
         // would smear them (same ordering as the hub screen).
+        // Before the widgets draw: what this decides is read by the fields as they render.
+        fields.update(mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
         int left = width / 2 - 155;
         graphics.drawCenteredString(font, title, width / 2, 12, 0xFFFFFF);
@@ -295,8 +297,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
         }
-        fields.update();
-        fields.render(graphics, font, mouseX, mouseY);
+        fields.render(graphics, font);
     }
 
     /** A caption sat just above its field, so an empty form still says what each box is for. */

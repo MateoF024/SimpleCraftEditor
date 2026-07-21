@@ -752,9 +752,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Before the widgets draw: what this decides is read by the fields as they render.
+        fields.update(mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
-        fields.update();
-        fields.render(graphics, font, mouseX, mouseY);
+        fields.render(graphics, font);
         if (!menu.getCarried().isEmpty()) {
             return;
         }

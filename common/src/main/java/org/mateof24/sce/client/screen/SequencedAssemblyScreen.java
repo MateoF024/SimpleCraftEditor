@@ -290,12 +290,13 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         for (int row = 0; row < visible && scroll + row < draft.sequence.size(); row++) {
             graphics.drawString(font, (scroll + row + 1) + ".", left, STEP_TOP + row * STEP_HEIGHT + 6, 0xD0D0D0);
         }
+        // Before the widgets draw: what this decides is read by the fields as they render.
+        fields.update(mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
         if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
         }
-        fields.update();
-        fields.render(graphics, font, mouseX, mouseY);
+        fields.render(graphics, font);
     }
 
     /** A caption sat just above its field, so an empty form still says what each box is for. */
