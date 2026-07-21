@@ -18,8 +18,6 @@ import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.core.edit.SequencedAssemblyCompiler;
 import org.mateof24.sce.net.SceNetworking;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Editor for Create's sequenced assembly, which is the one recipe that is not a single recipe: a base
@@ -29,7 +27,7 @@ import java.util.List;
  * are listed and can be added, retyped, refilled and removed in place.
  *
  * <p>There is no inventory or recipe viewer here to drag items from, so every id field completes against
- * the live item registry ({@link ItemIdSuggestions}).
+ * the live item registry ({@link FieldAssist}).
  */
 @Environment(EnvType.CLIENT)
 public class SequencedAssemblyScreen extends BaseSceScreen {
@@ -46,8 +44,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private static final int STEP_HEIGHT = 22;
 
     private final RecipeDraft draft;
-    private final ItemIdSuggestions suggestions = new ItemIdSuggestions();
-    private final List<EditBox> idFields = new ArrayList<>();
+    private final FieldAssist fields = new FieldAssist();
 
     private String idValue;
     private Component status = Component.empty();
@@ -79,7 +76,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     protected void init() {
-        idFields.clear();
+        fields.clear();
         int left = width / 2 - 155;
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.type",
@@ -87,23 +84,25 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                         SceNetworking.sendOpenEditor(idValue, RecipeModes.nextAvailable(sequenceMode())))
                 .bounds(left, ROW_TYPE, 310, 16).build());
 
-        textBox(left, ROW_ID, 250, idValue, s -> idValue = s, "sce.hint.id", false);
+        // The recipe id is being authored, so it is checked as an id but completed against nothing.
+        textBox(left, ROW_ID, 250, idValue, s -> idValue = s, "sce.hint.id", FieldAssist.id(),
+                FieldAssist.Source.NONE);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b ->
                         SceNetworking.sendOpenEditor(idValue, -1))
                 .bounds(left + 256, ROW_ID, 54, 16).build());
 
         textBox(left, ROW_PARTS, 130, idOf(draft.input(0)),
-                s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base", true);
+                s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base", FieldAssist.id(), FieldAssist.Source.ITEMS);
         textBox(left + 136, ROW_PARTS, 130, idOf(draft.transitionalItem),
-                s -> draft.transitionalItem = itemOf(s), "sce.hint.sequence_transitional", true);
+                s -> draft.transitionalItem = itemOf(s), "sce.hint.sequence_transitional", FieldAssist.id(), FieldAssist.Source.ITEMS);
         textBox(left + 272, ROW_PARTS, 38, Integer.toString(draft.loops),
-                s -> draft.loops = Math.max(1, parseInt(s, draft.loops)), "sce.hint.sequence_loops", false);
+                s -> draft.loops = Math.max(1, parseInt(s, draft.loops)), "sce.hint.sequence_loops", FieldAssist.intAtLeast(1), FieldAssist.Source.NONE);
 
         RecipeDraft.ResultEntry result = firstResult();
         textBox(left, ROW_RESULT, 250, idOf(result.item),
-                s -> result.item = itemOf(s), "sce.hint.sequence_result", true);
+                s -> result.item = itemOf(s), "sce.hint.sequence_result", FieldAssist.id(), FieldAssist.Source.ITEMS);
         textBox(left + 256, ROW_RESULT, 54, Integer.toString(result.count),
-                s -> result.count = Math.max(1, parseInt(s, result.count)), "sce.hint.amount", false);
+                s -> result.count = Math.max(1, parseInt(s, result.count)), "sce.hint.amount", FieldAssist.intAtLeast(1), FieldAssist.Source.NONE);
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.add_step"), b -> {
             draft.sequence.add(blankStep());
@@ -122,7 +121,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                 rebuildWidgets();
             }).bounds(left + 20, y, 92, 20).build());
             textBox(left + 116, y + 2, 150, idOf(step.input(0)),
-                    s -> step.setInput(0, itemOf(s)), "sce.hint.sequence_step_item", true);
+                    s -> step.setInput(0, itemOf(s)), "sce.hint.sequence_step_item", FieldAssist.id(), FieldAssist.Source.ITEMS);
             addRenderableWidget(Button.builder(Component.literal("x"), b -> {
                 draft.sequence.remove(index);
                 rebuildWidgets();
@@ -148,15 +147,13 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     }
 
     private EditBox textBox(int x, int y, int w, String value, java.util.function.Consumer<String> onChange,
-                            String hintKey, boolean completesItems) {
+                            String hintKey, java.util.function.Predicate<String> rule, FieldAssist.Source source) {
         EditBox box = new EditBox(font, x, y, w, 16, Component.translatable(hintKey));
         box.setMaxLength(200);
         box.setValue(value);
         box.setResponder(onChange);
         addRenderableWidget(box);
-        if (completesItems) {
-            idFields.add(box);
-        }
+        fields.add(box, rule, source);
         return box;
     }
 
@@ -237,7 +234,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (suggestions.mouseClicked(mouseX, mouseY)) {
+        if (fields.mouseClicked(mouseX, mouseY)) {
             return true;
         }
         int left = width / 2 - 155;
@@ -259,7 +256,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_TAB && suggestions.acceptFirst()) {
+        if (keyCode == GLFW.GLFW_KEY_TAB && fields.acceptFirst()) {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -295,8 +292,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         if (!status.getString().isEmpty()) {
             graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
         }
-        suggestions.update(idFields);
-        suggestions.render(graphics, font);
+        fields.update();
+        fields.render(graphics, font);
     }
 
     /** A caption sat just above its field, so an empty form still says what each box is for. */

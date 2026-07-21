@@ -88,6 +88,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private EditBox expBox;
     private EditBox timeBox;
     private EditBox chanceBox;
+    /** Marks fields holding something unusable and completes the ones naming a registry entry. */
+    private final FieldAssist fields = new FieldAssist();
 
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -183,6 +185,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     protected void init() {
         super.init();
         layout = new EditorLayout(mode);
+        fields.clear();
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.type", Component.translatable(RecipeModes.labelKey(mode))), b ->
                 reopen(RecipeModes.nextAvailable(mode)))
@@ -193,6 +196,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
+        // The recipe id is being authored, so there is nothing to complete it against.
+        fields.add(idBox, FieldAssist.id());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
                 .bounds(leftPos + 192, topPos + 22, 40, 16).build());
 
@@ -203,6 +208,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         tagBox.setHint(Component.translatable("sce.hint.tag_id"));
         tagBox.setResponder(s -> tagValue = s);
         addRenderableWidget(tagBox);
+        fields.add(tagBox, FieldAssist.id(), FieldAssist.Source.ITEM_TAGS);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.set_tag"), b -> applyTag())
                 .bounds(leftPos + 110, topPos + tagRowY, 54, 16).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
@@ -223,11 +229,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             expBox.setValue(Float.toString(pendingExp));
             expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
             addRenderableWidget(expBox);
+            fields.add(expBox, FieldAssist.decimalBetween(0.0f, Float.MAX_VALUE));
             timeBox = new EditBox(font, leftPos + layout.sideX, topPos + layout.sideTimeY,
                     EditorLayout.SIDE_FIELD_WIDTH, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
+            // Nothing can display a cooking recipe with no time, and saving refuses one, so the field
+            // says so while it is still being typed.
+            fields.add(timeBox, FieldAssist.intAtLeast(1));
         }
 
         if (create) {
@@ -240,10 +250,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             });
             addRenderableWidget(chanceBox);
+            fields.add(chanceBox, FieldAssist.decimalBetween(0.0f, 1.0f));
             timeBox = new EditBox(font, leftPos + 124, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
             addRenderableWidget(timeBox);
+            // Create fills in its own duration when the recipe leaves this at zero.
+            fields.add(timeBox, FieldAssist.intAtLeast(0));
             if (mixing()) {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
@@ -258,10 +271,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             fluidBox.setHint(Component.translatable("sce.hint.fluid_id"));
             fluidBox.setResponder(s -> fluidValue = s);
             addRenderableWidget(fluidBox);
+            fields.add(fluidBox, FieldAssist.idOrTag(), FieldAssist.Source.FLUIDS);
             fluidAmountBox = new EditBox(font, leftPos + 122, topPos + layout.fluidRowY, 40, 16, Component.translatable("sce.hint.amount"));
             fluidAmountBox.setValue(fluidAmountValue);
             fluidAmountBox.setResponder(s -> fluidAmountValue = s);
             addRenderableWidget(fluidAmountBox);
+            fields.add(fluidAmountBox, FieldAssist.intAtLeast(1));
             addRenderableWidget(Button.builder(Component.translatable("sce.button.set_fluid"), b -> applyFluid())
                     .bounds(leftPos + 166, topPos + layout.fluidRowY, 66, 16).build());
         }
@@ -306,6 +321,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             onClose();
             return true;
         }
+        if (key == GLFW.GLFW_KEY_TAB && fields.acceptFirst()) {
+            return true;
+        }
         if (getFocused() instanceof EditBox editBox) {
             editBox.keyPressed(key, scanCode, modifiers);
             return true;
@@ -315,6 +333,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && fields.mouseClicked(mouseX, mouseY)) {
+            return true;
+        }
         // The type button only steps forward on a normal click; right-clicking it steps back, so
         // overshooting the type you wanted does not mean cycling all the way round again.
         if (button == 1 && mouseX >= leftPos + 45 && mouseX < leftPos + 195
@@ -731,6 +752,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
+        fields.update();
+        fields.render(graphics, font);
         if (!menu.getCarried().isEmpty()) {
             return;
         }
