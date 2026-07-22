@@ -480,9 +480,45 @@ public final class RecipeStateManager {
         }
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(s);
+        reportApplied(manager, result.size());
         if (changeListener != null) {
             changeListener.accept(server);
         }
+    }
+
+    /**
+     * Checks that the recipe manager now holds what the edit said it should, and says so in a plain log
+     * line regardless of the debug switch.
+     *
+     * <p>An edit that is accepted, saved and then does not affect the running game is the one failure that
+     * cannot be allowed to pass silently, and it is not something the person making it can see. This states
+     * outright whether the change reached the game, which separates our own bug from another mod caching
+     * the recipe list behind us: if this reports the recipe as gone and it is still craftable, the recipe
+     * manager is no longer what the crafting code reads.
+     */
+    private void reportApplied(RecipeManager manager, int expected) {
+        RecipeState s = state();
+        int live = manager.getRecipes().size();
+        List<String> wrong = new ArrayList<>();
+        for (ResourceLocation id : s.disabled().keySet()) {
+            if (manager.byKey(id).isPresent()) {
+                wrong.add("still present although disabled: " + id);
+            }
+        }
+        for (ResourceLocation id : s.generated().keySet()) {
+            boolean present = manager.byKey(id).isPresent();
+            if (s.isGeneratedDisabled(id) && present) {
+                wrong.add("still present although turned off: " + id);
+            } else if (!s.isGeneratedDisabled(id) && !present) {
+                wrong.add("missing although it should be there: " + id);
+            }
+        }
+        if (wrong.isEmpty() && live == expected) {
+            SimpleCraftEditor.LOGGER.info("Recipe edit applied to the running game: {} recipes now loaded.", live);
+            return;
+        }
+        SimpleCraftEditor.LOGGER.warn("Recipe edit did not fully apply: expected {} recipes, the game has {}. {}",
+                expected, live, wrong.isEmpty() ? "" : String.join("; ", wrong));
     }
 
     /** Re-parses a stored recipe, repairing an old cooking time; null (and logged) if it will not parse. */
