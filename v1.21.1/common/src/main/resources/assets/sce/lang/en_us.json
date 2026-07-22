@@ -108,6 +108,7 @@
   "sce.cmd.deleted": "Deleted generated recipe %s",
   "sce.cmd.delete_failed": "No generated recipe with id %s.",
   "sce.cmd.reloaded": "Re-applied recipe state.",
+  "sce.msg.not_editable": "%s was written by a script (KubeJS, CraftTweaker or similar), not as a recipe file. The script rewrites it every time the pack loads, so an edit here would not last. Change it in the script instead.",
   "sce.cmd.debug": "SCE logging: %s",
   "sce.cmd.debug_status": "Recipes in the game right now: %s. Recipes read from the datapacks: %s. Of those, the pack's own recipes we rebuild from: %s.",
   "sce.cmd.debug_help": "Turn on with /sce debug true, or one area at a time: reload (recipes loading), edit (creating and saving), network (client/server messages), compat (other recipe mods), permission (who may edit), client (keys and screens). Everything is written to latest.log with the [SCE-DBG] prefix.",

@@ -57,8 +57,6 @@ public final class RecipeStateManager {
     /** The pack's recipes without ours, worked out once per load and reused by every edit after it. */
     private List<RecipeHolder<?>> pureBase = List.of();
     private boolean pureBaseKnown;
-    /** Set when a load starts, cleared when {@link #applyAfterLoad} has had its turn. */
-    private boolean applyPending;
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
 
@@ -89,7 +87,6 @@ public final class RecipeStateManager {
         injectedIds.clear();
         pureBase = List.of();
         pureBaseKnown = false;
-        applyPending = true;
 
         int removed = 0;
         for (ResourceLocation id : s.disabled().keySet()) {
@@ -122,33 +119,6 @@ public final class RecipeStateManager {
         SceDebug.log(SceDebug.Category.RELOAD,
                 "Recipes ready: {} from the pack, {} disabled by us removed, {} of ours added ({} confirmed).",
                 rawJsonCache.size(), removed, added, verified);
-    }
-
-    /**
-     * Applies the state once more after a recipe load has finished, on the first tick that follows it.
-     *
-     * <p>Editing the raw JSON before the load settles it for anything built from that JSON, but not for a
-     * recipe a script creates. A KubeJS or CraftTweaker script runs on every load and writes its recipes
-     * straight into the manager afterwards, so it puts back the one we removed and overwrites the one we
-     * changed. It has the last word during the load, by design, and nothing we do inside the load can take
-     * that away — nor should it.
-     *
-     * <p>It only has the last word during the load, though. Applying again once the load is over settles
-     * it: the script has had its say, and the pack's own edits go on top. See the 1.20.1 mirror.
-     *
-     * <p>Nothing happens when the pack has no edits, which is the ordinary case.
-     */
-    public void applyAfterLoad(MinecraftServer server) {
-        if (!applyPending) {
-            return;
-        }
-        applyPending = false;
-        RecipeState s = state();
-        if (s.disabled().isEmpty() && s.generated().isEmpty()) {
-            return;
-        }
-        SceDebug.log(SceDebug.Category.RELOAD, "Recipes finished loading; applying this pack's edits on top");
-        reapplyAndSync(server, server.getRecipeManager());
     }
 
     /**
@@ -340,47 +310,30 @@ public final class RecipeStateManager {
         return pureBase.size();
     }
 
-    /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
-    public JsonObject editorJson(MinecraftServer server, ResourceLocation id) {
+    /**
+     * The JSON the editor should open, or null when the recipe has no source we can edit faithfully.
+     *
+     * <p>A recipe only has a source we can work from if it was written as a file: the pack's own datapack,
+     * or an earlier edit of yours. A recipe a script creates has none — see {@link #isEditable}.
+     */
+    public JsonObject editorJson(ResourceLocation id) {
         JsonObject generated = state().generated().get(id);
         if (generated != null) {
             SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from the version you authored", id);
             return generated;
         }
         JsonObject raw = rawJson(id);
-        if (raw != null) {
-            SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from its datapack file", id);
-            return raw;
-        }
-        // No file behind it: written by a script, or built in code. Read it back out of the loaded recipe
-        // instead, so where a recipe came from stops deciding whether it can be opened.
-        JsonObject rebuilt = server.getRecipeManager().byKey(id).map(this::serialize).orElse(null);
-        SceDebug.log(SceDebug.Category.EDIT, "Opening '{}': no file for it, so {}",
-                id, rebuilt != null ? "it was read back from the loaded recipe" : "it cannot be opened");
-        return rebuilt;
+        SceDebug.log(SceDebug.Category.EDIT, "Opening '{}': {}",
+                id, raw != null ? "from its datapack file" : "no file for it, so it cannot be edited");
+        return raw;
     }
 
     /**
-     * Writes a loaded recipe back out as the datapack JSON that would have produced it.
-     *
-     * <p>Not every recipe comes from a file. KubeJS and CraftTweaker build theirs from a script, mods
-     * build theirs in code, and Create generates some at runtime — none of those exist as JSON anywhere,
-     * so the editor, which reads the datapack source, had nothing to open. Here the same registry-aware
-     * codec that reads a recipe writes it back, so any type at all can be described, whatever made it.
+     * Whether this recipe can be edited at all. See the 1.20.1 mirror: a recipe a script creates is
+     * rewritten by that script on every load, so any change of ours is undone and is refused instead.
      */
-    private JsonObject serialize(RecipeHolder<?> holder) {
-        if (registries == null) {
-            return null;
-        }
-        try {
-            RegistryOps<JsonElement> ops = registries.createSerializationContext(JsonOps.INSTANCE);
-            JsonElement json = Recipe.CODEC.encodeStart(ops, holder.value()).getOrThrow(JsonParseException::new);
-            return json.isJsonObject() ? json.getAsJsonObject() : null;
-        } catch (Exception e) {
-            SceDebug.log(SceDebug.Category.EDIT, "Could not read '{}' back from the loaded recipe: {}",
-                    holder.id(), e.toString());
-            return null;
-        }
+    public boolean isEditable(ResourceLocation id) {
+        return state().isGenerated(id) || rawJsonCache.containsKey(id);
     }
 
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */

@@ -77,8 +77,15 @@ public final class SceNetworking {
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, DISABLE, (buf, context) -> {
             ResourceLocation id = buf.readResourceLocation();
-            context.queue(() -> ifAllowed(context.getPlayer(), player ->
-                    RecipeStateManager.INSTANCE.disable(player.getServer(), id)));
+            context.queue(() -> ifAllowed(context.getPlayer(), player -> {
+                // Turning off a script-written recipe is as short-lived as editing one: the script puts it
+                // back on the next load. Refused for the same reason, and said the same way.
+                if (!RecipeStateManager.INSTANCE.isEditable(id)) {
+                    player.sendSystemMessage(Component.translatable("sce.msg.not_editable", id.toString()));
+                    return;
+                }
+                RecipeStateManager.INSTANCE.disable(player.getServer(), id);
+            }));
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, ENABLE, (buf, context) -> {
             ResourceLocation id = buf.readResourceLocation();
@@ -108,9 +115,6 @@ public final class SceNetworking {
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
         PlayerEvent.PLAYER_QUIT.register(player -> lastPermission.remove(player.getUUID()));
         TickEvent.SERVER_POST.register(SceNetworking::trackPermissions);
-        // A script-driven mod writes its recipes after the load, so the pack's edits go on again once the
-        // load is over. Costs a boolean check per tick when there is nothing to do.
-        TickEvent.SERVER_POST.register(RecipeStateManager.INSTANCE::applyAfterLoad);
     }
 
     private static void handleSave(net.minecraft.world.entity.player.Player sender, ResourceLocation id, String json) {
@@ -143,7 +147,7 @@ public final class SceNetworking {
         if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             return;
         }
-        JsonObject json = RecipeStateManager.INSTANCE.editorJson(player.server, id);
+        JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
         FriendlyByteBuf buf = buffer();
         buf.writeResourceLocation(id);
         buf.writeUtf(json == null ? "" : json.toString(), MAX_JSON);
@@ -161,7 +165,14 @@ public final class SceNetworking {
         // Only an explicit load (a negative mode) pulls in a stored recipe. Changing type must not quietly
         // adopt whatever recipe happens to share the id sitting in the box.
         if (editId != null && requestedMode < 0) {
-            JsonObject json = RecipeStateManager.INSTANCE.editorJson(player.server, editId);
+            // A recipe a script wrote is refused rather than opened. See RecipeStateManager#isEditable:
+            // the script rewrites it on every load, so an edit would hold until the next one and then
+            // vanish. Saying so is more use than an editor that appears to work.
+            if (!RecipeStateManager.INSTANCE.isEditable(editId)) {
+                player.sendSystemMessage(Component.translatable("sce.msg.not_editable", editId.toString()));
+                return;
+            }
+            JsonObject json = RecipeStateManager.INSTANCE.editorJson(editId);
             if (json != null) {
                 editJson = json.toString();
                 RecipeDraft draft = RecipeCompiler.fromJson(editId, json);
