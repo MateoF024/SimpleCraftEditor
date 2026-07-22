@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
@@ -315,11 +316,13 @@ public final class RecipeStateManager {
         // the clean datapack source, so create, disable and delete all take effect cleanly, and every
         // recipe viewer refreshes with the reload.
         SceDebug.log(SceDebug.Category.EDIT, "reapplyAndSync: reloading datapacks to apply recipe state");
-        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() -> {
-            if (changeListener != null) {
-                changeListener.accept(server);
-            }
-        });
+        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() ->
+                server.execute(() -> {
+                    closeStaleCraftingMenus(server);
+                    if (changeListener != null) {
+                        changeListener.accept(server);
+                    }
+                }));
     }
 
 
@@ -344,6 +347,27 @@ public final class RecipeStateManager {
         json.addProperty("cookingtime", cooking.defaultTime);
         SimpleCraftEditor.LOGGER.info("Gave recipe '{}' the default cooking time of {} ticks; it had none",
                 id, cooking.defaultTime);
+    }
+
+    /**
+     * Closes any crafting screen a player has open after the recipe set changes.
+     *
+     * <p>An open crafting menu can hold a recipe of its own. FastWorkbench caches the matched recipe on the
+     * menu's result container and skips looking it up again while the grid's contents are unchanged, so a
+     * recipe deleted here kept crafting from that cached object — items consumed, result given — even
+     * though the server's recipe manager no longer had it. Nothing we do to the recipe set can reach that
+     * cache; ending the menu is what clears it. Our own editor is left open, since saving from it must not
+     * close it.
+     */
+    private void closeStaleCraftingMenus(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.containerMenu != player.inventoryMenu
+                    && !(player.containerMenu instanceof org.mateof24.sce.menu.RecipeEditorMenu)) {
+                SceDebug.log(SceDebug.Category.EDIT, "Closing {}'s open {} so a cached recipe cannot outlive the change",
+                        player.getGameProfile().getName(), player.containerMenu.getClass().getSimpleName());
+                player.closeContainer();
+            }
+        }
     }
 
     /** Clears session-scoped caches when a server stops (so singleplayer world switches start clean). */
