@@ -140,7 +140,7 @@ public final class SceNetworking {
         if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             return;
         }
-        JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
+        JsonObject json = RecipeStateManager.INSTANCE.editorJson(player.server, id);
         FriendlyByteBuf buf = buffer();
         buf.writeResourceLocation(id);
         buf.writeUtf(json == null ? "" : json.toString(), MAX_JSON);
@@ -158,7 +158,7 @@ public final class SceNetworking {
         // Only an explicit load (a negative mode) pulls in a stored recipe. Changing type must not quietly
         // adopt whatever recipe happens to share the id sitting in the box.
         if (editId != null && requestedMode < 0) {
-            JsonObject json = RecipeStateManager.INSTANCE.editorJson(editId);
+            JsonObject json = RecipeStateManager.INSTANCE.editorJson(player.server, editId);
             if (json != null) {
                 editJson = json.toString();
                 RecipeDraft draft = RecipeCompiler.fromJson(editId, json);

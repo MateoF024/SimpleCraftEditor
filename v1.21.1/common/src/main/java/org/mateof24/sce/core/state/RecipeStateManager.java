@@ -311,13 +311,46 @@ public final class RecipeStateManager {
     }
 
     /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
-    public JsonObject editorJson(ResourceLocation id) {
+    public JsonObject editorJson(MinecraftServer server, ResourceLocation id) {
         JsonObject generated = state().generated().get(id);
-        JsonObject result = generated != null ? generated : rawJson(id);
-        SceDebug.log(SceDebug.Category.EDIT, "editorJson '{}': source={}, rawCacheSize={}",
-                id, generated != null ? "generated" : (result != null ? "rawCache" : "NONE (opens empty)"),
-                rawJsonCache.size());
-        return result;
+        if (generated != null) {
+            SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from the version you authored", id);
+            return generated;
+        }
+        JsonObject raw = rawJson(id);
+        if (raw != null) {
+            SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from its datapack file", id);
+            return raw;
+        }
+        // No file behind it: written by a script, or built in code. Read it back out of the loaded recipe
+        // instead, so where a recipe came from stops deciding whether it can be opened.
+        JsonObject rebuilt = server.getRecipeManager().byKey(id).map(this::serialize).orElse(null);
+        SceDebug.log(SceDebug.Category.EDIT, "Opening '{}': no file for it, so {}",
+                id, rebuilt != null ? "it was read back from the loaded recipe" : "it cannot be opened");
+        return rebuilt;
+    }
+
+    /**
+     * Writes a loaded recipe back out as the datapack JSON that would have produced it.
+     *
+     * <p>Not every recipe comes from a file. KubeJS and CraftTweaker build theirs from a script, mods
+     * build theirs in code, and Create generates some at runtime — none of those exist as JSON anywhere,
+     * so the editor, which reads the datapack source, had nothing to open. Here the same registry-aware
+     * codec that reads a recipe writes it back, so any type at all can be described, whatever made it.
+     */
+    private JsonObject serialize(RecipeHolder<?> holder) {
+        if (registries == null) {
+            return null;
+        }
+        try {
+            RegistryOps<JsonElement> ops = registries.createSerializationContext(JsonOps.INSTANCE);
+            JsonElement json = Recipe.CODEC.encodeStart(ops, holder.value()).getOrThrow(JsonParseException::new);
+            return json.isJsonObject() ? json.getAsJsonObject() : null;
+        } catch (Exception e) {
+            SceDebug.log(SceDebug.Category.EDIT, "Could not read '{}' back from the loaded recipe: {}",
+                    holder.id(), e.toString());
+            return null;
+        }
     }
 
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */

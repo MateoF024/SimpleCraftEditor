@@ -314,13 +314,25 @@ public final class RecipeStateManager {
     }
 
     /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
-    public JsonObject editorJson(ResourceLocation id) {
+    public JsonObject editorJson(MinecraftServer server, ResourceLocation id) {
         JsonObject generated = state().generated().get(id);
-        JsonObject result = generated != null ? generated : rawJson(id);
-        SceDebug.log(SceDebug.Category.EDIT, "editorJson '{}': source={}, rawCacheSize={}",
-                id, generated != null ? "generated" : (result != null ? "rawCache" : "NONE (opens empty)"),
-                rawJsonCache.size());
-        return result;
+        if (generated != null) {
+            SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from the version you authored", id);
+            return generated;
+        }
+        JsonObject raw = rawJson(id);
+        if (raw != null) {
+            SceDebug.log(SceDebug.Category.EDIT, "Opening '{}' from its datapack file", id);
+            return raw;
+        }
+        // No file behind it: written by a script, or built in code. Read it back out of the loaded recipe
+        // instead, so where a recipe came from stops deciding whether it can be opened.
+        JsonObject rebuilt = server.getRecipeManager().byKey(id)
+                .map(recipe -> LiveRecipeJson.of(recipe, server.registryAccess()))
+                .orElse(null);
+        SceDebug.log(SceDebug.Category.EDIT, "Opening '{}': no file for it, so {}",
+                id, rebuilt != null ? "it was read back from the loaded recipe" : "it cannot be opened");
+        return rebuilt;
     }
 
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */
