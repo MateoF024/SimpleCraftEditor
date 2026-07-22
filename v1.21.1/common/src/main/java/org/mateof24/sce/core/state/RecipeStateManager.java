@@ -42,12 +42,10 @@ public final class RecipeStateManager {
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
     private List<RecipeHolder<?>> baseSnapshot = List.of();
-    /** See the 1.20.1 mirror: whether the base was truly captured, distinct from an empty list. */
+    /** See the 1.20.1 mirror: whether the base was captured, distinct from an empty list. Runtime edits only. */
     private boolean baseCaptured;
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
-    /** The running server, so the reload listener can re-apply state after the recipes finish loading. */
-    private MinecraftServer server;
 
     private RecipeStateManager() {
     }
@@ -57,48 +55,36 @@ public final class RecipeStateManager {
         this.changeListener = listener;
     }
 
-    /** Held from server start so the reload listener can re-apply state once recipes are loaded. */
-    public void setServer(MinecraftServer server) {
-        this.server = server;
-    }
-
     /**
-     * Applies our state once the server has fully started. See the 1.20.1 mirror: the reload listener can
-     * fire before the server reference exists on the initial load, so generated recipes were missing until
-     * the first edit. By SERVER_STARTED the recipes are loaded and the registries are available.
+     * Edits the raw recipe map before anything loads it, from {@link org.mateof24.sce.mixin.RecipeManagerMixin}
+     * at the head of {@code RecipeManager.apply}, ahead of KubeJS's own head hook. See the 1.20.1 mirror:
+     * removing disabled ids and adding generated JSON here means the loaded set is already the edited one,
+     * in place before the game or any viewer indexes it. No parsing happens here, so no registries needed.
      */
-    public void onServerStarted(MinecraftServer server) {
-        this.server = server;
-        this.registries = server.registryAccess();
-        RecipeManager manager = server.getRecipeManager();
-        applyTo(manager);
-        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
-    }
-
-    /**
-     * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
-     * The capture path that survives KubeJS: refreshes the source cache, forgets the stale base snapshot,
-     * and re-applies our state on the server thread once the reload has settled and the registries and
-     * recipe manager are available.
-     */
-    public void onDatapackRecipesScanned(Map<ResourceLocation, JsonElement> sources) {
+    public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
         SceDebug.reportEnvironment();
         rawJsonCache.clear();
-        rawJsonCache.putAll(sources);
+        rawJsonCache.putAll(map);
         baseCaptured = false;
-        SceDebug.log(SceDebug.Category.RELOAD, "Recipe sources scanned: {} entries", sources.size());
-        if (server != null) {
-            MinecraftServer captured = server;
-            captured.execute(() -> {
-                registries = captured.registryAccess();
-                RecipeManager manager = captured.getRecipeManager();
-                applyTo(manager);
-                captured.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
-                if (changeListener != null) {
-                    changeListener.accept(captured);
-                }
-            });
+
+        RecipeState s = state();
+        int removed = 0;
+        for (ResourceLocation id : s.disabled().keySet()) {
+            if (map.remove(id) != null) {
+                removed++;
+            }
         }
+        int added = 0;
+        for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
+            if (s.isGeneratedDisabled(entry.getKey())) {
+                continue;
+            }
+            map.put(entry.getKey(), entry.getValue());
+            added++;
+        }
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "beforeRecipeLoad: {} sources, removed {} disabled, added {} generated",
+                rawJsonCache.size(), removed, added);
     }
 
     public RecipeState state() {
@@ -315,6 +301,8 @@ public final class RecipeStateManager {
     }
 
     private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
+        // A runtime edit parses the generated recipe via the codec, which needs the registries.
+        registries = server.registryAccess();
         applyTo(manager);
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(state());
@@ -369,7 +357,6 @@ public final class RecipeStateManager {
         rawJsonCache.clear();
         baseSnapshot = List.of();
         baseCaptured = false;
-        server = null;
         registries = null;
         state = null; // re-read from the global config on next use
     }

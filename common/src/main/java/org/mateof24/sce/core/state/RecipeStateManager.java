@@ -34,16 +34,13 @@ public final class RecipeStateManager {
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
     private List<Recipe<?>> baseSnapshot = List.of();
     /**
-     * Whether {@link #baseSnapshot} was ever actually captured. Distinct from "empty": a real reload with
-     * zero recipes and a reload that never ran both leave the list empty, and the difference is the whole
-     * safety of {@link #applyTo}. False means we hold no picture of the base set, so replacing the live
-     * recipes with our filtered list would wipe everything the game loaded — which is exactly what happened
-     * under KubeJS, whose recipe hook cancels the vanilla load our capture was riding on.
+     * Whether {@link #baseSnapshot} was ever captured. Distinct from "empty". Only a runtime edit uses it
+     * (a reload applies our state through {@link #beforeRecipeLoad} instead), and false there means we fall
+     * back to the live set rather than replacing it with just our generated recipes — the guard that stops
+     * an edit ever wiping a pack's recipes.
      */
     private boolean baseCaptured;
     private Consumer<MinecraftServer> changeListener;
-    /** The running server, so the reload listener can re-apply state after the recipes finish loading. */
-    private MinecraftServer server;
 
     private RecipeStateManager() {
     }
@@ -53,50 +50,40 @@ public final class RecipeStateManager {
         this.changeListener = listener;
     }
 
-    /** Held from server start so the reload listener can re-apply state once recipes are loaded. */
-    public void setServer(MinecraftServer server) {
-        this.server = server;
-    }
-
     /**
-     * Applies our state once the server has fully started. The reload listener covers later {@code /reload}s,
-     * but on the initial load it can fire before the server reference exists (the first datapack load runs
-     * during world setup), so nothing re-applied and generated recipes were missing until the first edit.
-     * By SERVER_STARTED the recipes are loaded — including by any mod that took the load over — so applying
-     * now lands our disabled/generated set on top of the finished recipe manager.
+     * Edits the raw recipe map before anything loads it, from {@link org.mateof24.sce.mixin.RecipeManagerMixin}
+     * at the head of {@code RecipeManager.apply}. This is the capture-and-apply path, and it runs before
+     * KubeJS's own head hook (higher mixin priority) so it edits the very map KubeJS or vanilla then builds
+     * the recipe set from. Removing a disabled id and adding the generated JSON here means the loaded set is
+     * already the edited one — in place before the game or any viewer indexes it, no reload race.
+     *
+     * <p>The incoming map is also the full datapack recipe source, captured for the editor to load from.
      */
-    public void onServerStarted(MinecraftServer server) {
-        this.server = server;
-        RecipeManager manager = server.getRecipeManager();
-        applyTo(manager);
-        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
-    }
-
-    /**
-     * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
-     * This is the capture path that survives KubeJS. It refreshes the source cache and, since a reload has
-     * just replaced the recipe set, forgets the old base snapshot and re-applies our disabled/generated
-     * state onto the freshly loaded recipes — on the server thread, after the reload has fully settled.
-     */
-    public void onDatapackRecipesScanned(Map<ResourceLocation, JsonElement> sources) {
+    public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
         SceDebug.reportEnvironment();
         rawJsonCache.clear();
-        rawJsonCache.putAll(sources);
-        baseCaptured = false; // a reload replaced the recipes; the next apply must snapshot them anew
-        SceDebug.log(SceDebug.Category.RELOAD, "Recipe sources scanned: {} entries", sources.size());
-        if (server != null) {
-            // Defer to the server thread: the reload is still finishing, and the recipe manager must be
-            // fully populated (by vanilla or by whoever took over) before we snapshot and re-apply.
-            MinecraftServer captured = server;
-            captured.execute(() -> {
-                RecipeManager manager = captured.getRecipeManager();
-                applyTo(manager);
-                captured.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
-                if (changeListener != null) {
-                    changeListener.accept(captured);
-                }
-            });
+        rawJsonCache.putAll(map);
+        // A reload rebuilds the recipe set from this map, so a later runtime edit must re-snapshot it.
+        baseCaptured = false;
+
+        RecipeState s = state();
+        int removed = 0;
+        for (ResourceLocation id : s.disabled().keySet()) {
+            if (map.remove(id) != null) {
+                removed++;
+            }
         }
+        int added = 0;
+        for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
+            if (s.isGeneratedDisabled(entry.getKey())) {
+                continue;
+            }
+            map.put(entry.getKey(), entry.getValue());
+            added++;
+        }
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "beforeRecipeLoad: {} sources, removed {} disabled, added {} generated",
+                rawJsonCache.size(), removed, added);
     }
 
     public RecipeState state() {
@@ -364,7 +351,6 @@ public final class RecipeStateManager {
         rawJsonCache.clear();
         baseSnapshot = List.of();
         baseCaptured = false;
-        server = null;
         state = null; // re-read from the global config on next use
     }
 }
