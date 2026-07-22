@@ -127,6 +127,22 @@ public final class SceClient {
         return found;
     }
 
+    private static boolean keysRegistered;
+
+    /**
+     * Registers the editor key. Separate from {@link #init()} because a loader collects key mappings at a
+     * fixed moment during startup: register after it and the key is accepted, listed in the controls
+     * screen, and never fires. Whoever wires up a loader calls this early enough to be counted, and
+     * calling it twice is harmless.
+     */
+    public static void registerKeyMappings() {
+        if (keysRegistered) {
+            return;
+        }
+        keysRegistered = true;
+        registerKeyMappings();
+    }
+
     public static void init() {
         SceNetworking.setClientRegistryAccess(() -> Minecraft.getInstance().level.registryAccess());
         registerReceivers();

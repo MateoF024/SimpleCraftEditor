@@ -19,6 +19,10 @@ public final class SimpleCraftEditorForge {
         SimpleCraftEditor.init();
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            // The key has to be registered now: Forge collects key mappings before client setup runs, so
+            // registering it there had it show up in the controls screen and do nothing when pressed. The
+            // rest of the client wiring still waits for setup, where the menu type is resolvable.
+            SceClient.registerKeyMappings();
             modEventBus.addListener((FMLClientSetupEvent event) -> SceClient.init());
         }
     }

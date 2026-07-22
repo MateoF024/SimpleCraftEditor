@@ -461,11 +461,66 @@ public final class RecipeStateManager {
             SimpleCraftEditor.LOGGER.error("Could not apply the recipe edit to the running game", e);
             return;
         }
+        invalidateDerivedCaches(manager);
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(s);
         reportApplied(manager, result.size());
         if (changeListener != null) {
             changeListener.accept(server);
+        }
+    }
+
+    /**
+     * Empties any lookup a mod has built on top of the recipe manager, because the recipes it was built
+     * from have just been replaced.
+     *
+     * <p>{@code replaceRecipes} rewrites the two maps the game itself reads, and nothing more. Performance
+     * mods commonly index those maps once into a faster structure and rebuild it only when the datapacks
+     * reload — which is the whole point of the optimisation, and which our edits do not do. Crafting then
+     * keeps answering from the old index: a recipe that was deleted still crafts, a new one is unknown,
+     * and the edit looks ignored even though it landed. The only way out was a reload, which is exactly
+     * the thing we will not force on someone's server.
+     *
+     * <p>Nothing here names a mod. An index like that lives on the recipe manager instance, either in a
+     * subclass of it or in a field a mixin added, and either is recognisable without knowing whose it is:
+     * a subclass field is declared below {@link RecipeManager}, and a mixin-added field carries a
+     * {@code $} in its name, which no field of the game ever does. Both are cleared rather than replaced,
+     * so a lazily-built index simply rebuilds itself on the next lookup, and anything that turns out not
+     * to be clearable is left exactly as it was.
+     */
+    private void invalidateDerivedCaches(RecipeManager manager) {
+        int cleared = 0;
+        for (Class<?> type = manager.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+            boolean vanilla = type == RecipeManager.class;
+            for (java.lang.reflect.Field field : type.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                if (vanilla && field.getName().indexOf('$') < 0) {
+                    continue; // the game's own fields, including the two replaceRecipes just rewrote
+                }
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(manager);
+                    if (value instanceof Map<?, ?> map && !map.isEmpty()) {
+                        map.clear();
+                        cleared++;
+                    } else if (value instanceof java.util.Collection<?> collection && !collection.isEmpty()) {
+                        collection.clear();
+                        cleared++;
+                    }
+                } catch (Throwable ignored) {
+                    // Immutable, inaccessible or simply not a cache. Leaving it alone is always safe.
+                }
+            }
+            if (vanilla) {
+                break;
+            }
+        }
+        if (cleared > 0) {
+            SceDebug.log(SceDebug.Category.COMPAT,
+                    "Cleared {} recipe lookup(s) another mod had built on {}, so it rebuilds from the edited recipes",
+                    cleared, manager.getClass().getName());
         }
     }
 
