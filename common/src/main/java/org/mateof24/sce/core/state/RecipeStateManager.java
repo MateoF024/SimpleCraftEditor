@@ -2,15 +2,21 @@ package org.mateof24.sce.core.state;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.edit.RecipeDraft;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -19,15 +25,27 @@ import java.util.function.Consumer;
  * {@link RecipeManager}. Both crafting and every recipe viewer read from that manager, so removing a
  * recipe here removes it everywhere (JEI, EMI and the game itself), and injecting one adds it everywhere.
  *
- * <p>The set of datapack-loaded recipes is snapshotted on every reload ({@link #baseSnapshot}) so that
- * runtime edits (disable/enable/…) always recompute from the original set rather than from an
- * already-filtered one — this is what lets a recipe be re-enabled precisely within the same session.
+ * <p>Edits take effect two ways. On a datapack load the raw recipe JSON is edited before anything reads
+ * it ({@link #beforeRecipeLoad}), so the pack loads already-correct. Between loads an edit is applied to
+ * the live manager ({@link #reapplyAndSync}), rebuilding from the pack's own recipes rather than from an
+ * already-filtered set — which is what lets a recipe be re-enabled precisely within the same session.
+ *
+ * <p>Neither path reloads datapacks. When to reload a pack is the server owner's call, so recipe viewers
+ * refresh on the next {@code /reload} they run, exactly as the readme describes.
  */
 public final class RecipeStateManager {
     public static final RecipeStateManager INSTANCE = new RecipeStateManager();
 
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
+    /**
+     * The generated recipe ids added to the last recipe load. Subtracting these from the live set is what
+     * recovers the pack's own recipes exactly — see {@link #pureBase}.
+     */
+    private final Set<ResourceLocation> injectedIds = new HashSet<>();
+    /** The pack's recipes without ours, worked out once per load and reused by every edit after it. */
+    private List<Recipe<?>> pureBase = List.of();
+    private boolean pureBaseKnown;
     private Consumer<MinecraftServer> changeListener;
 
     private RecipeStateManager() {
@@ -55,10 +73,14 @@ public final class RecipeStateManager {
         // an authored recipe permanent. Count the ids we would add that are somehow already here.
         long alreadyPresent = s.generated().keySet().stream().filter(map::containsKey).count();
         SceDebug.log(SceDebug.Category.RELOAD,
-                "beforeRecipeLoad ENTER: {} entries in {} (mapId={}), {} of our generated ids already present",
-                map.size(), map.getClass().getName(), System.identityHashCode(map), alreadyPresent);
+                "Recipes loading: {} in the pack. {} of our own are already in there before we add them (should be 0).",
+                map.size(), alreadyPresent);
         rawJsonCache.clear();
         rawJsonCache.putAll(map);
+        // A new load replaces the recipe set, so anything worked out from the old one is stale.
+        injectedIds.clear();
+        pureBase = List.of();
+        pureBaseKnown = false;
 
         int removed = 0;
         for (ResourceLocation id : s.disabled().keySet()) {
@@ -77,21 +99,22 @@ public final class RecipeStateManager {
                 // viewer; repair it as it goes in.
                 repairCookingTime(entry.getKey(), entry.getValue());
                 map.put(entry.getKey(), entry.getValue());
+                injectedIds.add(entry.getKey());
                 added++;
                 // Confirm the put actually took — an immutable map would throw or ignore it.
                 if (entry.getValue().equals(map.get(entry.getKey()))) {
                     verified++;
                 } else {
                     SceDebug.log(SceDebug.Category.RELOAD,
-                            "  WARNING: '{}' did not survive being put into the recipe map", entry.getKey());
+                            "  Could not add '{}' - another mod is refusing changes to the recipe list.", entry.getKey());
                 }
             } catch (Exception e) {
                 SceDebug.log(SceDebug.Category.RELOAD,
-                        "  ERROR putting '{}' into the recipe map: {}", entry.getKey(), e.toString());
+                        "  Failed to add '{}': {}", entry.getKey(), e.toString());
             }
         }
         SceDebug.log(SceDebug.Category.RELOAD,
-                "beforeRecipeLoad DONE: {} sources, removed {} disabled, added {} generated ({} verified in map)",
+                "Recipes ready: {} from the pack, {} disabled by us removed, {} of ours added ({} confirmed).",
                 rawJsonCache.size(), removed, added, verified);
     }
 
@@ -283,9 +306,9 @@ public final class RecipeStateManager {
         return rawJsonCache.size();
     }
 
-    /** Datapack recipe sources captured — the base the reload rebuilds from. */
+    /** How many of the pack's own recipes we rebuild from — zero until the first edit works it out. */
     public int baseSnapshotSize() {
-        return rawJsonCache.size();
+        return pureBase.size();
     }
 
     /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
@@ -345,20 +368,101 @@ public final class RecipeStateManager {
         reapplyAndSync(server, server.getRecipeManager());
     }
 
-    private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
-        RecipeStore.save(state());
-        // Rebuild the recipe set through a datapack reload rather than replacing recipes on the live
-        // manager. In a heavy pack other mods own recipe loading and cache the result, so replacing
-        // recipes after the fact both fought them and left our own injected recipes sitting in the base
-        // set — deleting a generated recipe kept it, permanently. A reload re-runs beforeRecipeLoad from
-        // the clean datapack source, so create, disable and delete all take effect cleanly, and every
-        // recipe viewer refreshes with the reload.
-        SceDebug.log(SceDebug.Category.EDIT, "reapplyAndSync: reloading datapacks to apply recipe state");
-        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() -> {
-            if (changeListener != null) {
-                changeListener.accept(server);
+    /**
+     * The pack's own recipes, without the ones we added.
+     *
+     * <p>Worked out once per load by taking the live set and removing the ids we injected during
+     * {@link #beforeRecipeLoad}. At that moment the live set is exactly the pack's recipes plus ours, so
+     * the subtraction is precise.
+     *
+     * <p>This is the part that used to be wrong. The base was taken as the whole live set, which already
+     * contained our injected recipes; deleting one then dropped it from the generated set while it stayed
+     * in that base, so it survived as though the pack had shipped it. Keying the subtraction on what we
+     * injected — not on what is generated right now — is what makes a deletion actually delete.
+     */
+    private List<Recipe<?>> pureBase(RecipeManager manager) {
+        if (!pureBaseKnown) {
+            List<Recipe<?>> base = new ArrayList<>(manager.getRecipes().size());
+            for (Recipe<?> recipe : manager.getRecipes()) {
+                if (!injectedIds.contains(recipe.getId())) {
+                    base.add(recipe);
+                }
             }
-        });
+            pureBase = List.copyOf(base);
+            pureBaseKnown = true;
+            SceDebug.log(SceDebug.Category.RELOAD, "Base without our recipes: {} of {} live ({} were ours)",
+                    pureBase.size(), manager.getRecipes().size(), injectedIds.size());
+        }
+        return pureBase;
+    }
+
+    /**
+     * Applies the current state to the live recipes and tells everyone.
+     *
+     * <p>Deliberately does <em>not</em> reload datapacks. A reload would refresh recipe viewers for free,
+     * but it also reloads every other datapack in the pack, and when to do that belongs to whoever runs
+     * the server, not to us. Recipe viewers pick the change up on the next {@code /reload}, which is the
+     * behaviour the readme has always described.
+     */
+    private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
+        RecipeState s = state();
+        List<Recipe<?>> base = pureBase(manager);
+        List<Recipe<?>> result = new ArrayList<>(base.size() + s.generated().size());
+        for (Recipe<?> recipe : base) {
+            ResourceLocation id = recipe.getId();
+            if (s.isDisabled(id) || s.isGenerated(id)) {
+                continue; // disabled, or about to be replaced by our own version of the same id
+            }
+            result.add(recipe);
+        }
+        // An id we injected is missing from the base, so if it was an edit of a pack recipe and that edit is
+        // now gone, the pack's own version has to come back — otherwise deleting an edit would delete the
+        // recipe it edited.
+        int restored = 0;
+        for (ResourceLocation id : injectedIds) {
+            if (s.isGenerated(id) || s.isDisabled(id)) {
+                continue;
+            }
+            JsonElement original = rawJsonCache.get(id);
+            if (original == null || !original.isJsonObject()) {
+                continue;
+            }
+            Recipe<?> parsed = parse(id, original.getAsJsonObject().deepCopy());
+            if (parsed != null) {
+                result.add(parsed);
+                restored++;
+            }
+        }
+        for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
+            if (s.isGeneratedDisabled(entry.getKey())) {
+                continue;
+            }
+            Recipe<?> parsed = parse(entry.getKey(), entry.getValue());
+            if (parsed != null) {
+                result.add(parsed);
+            }
+        }
+        SceDebug.log(SceDebug.Category.EDIT,
+                "Applying: {} pack recipes - {} disabled + {} of ours + {} restored originals = {} live",
+                base.size(), s.disabled().size(), s.generated().size(), restored, result.size());
+        manager.replaceRecipes(result);
+        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+        RecipeStore.save(s);
+        if (changeListener != null) {
+            changeListener.accept(server);
+        }
+    }
+
+    /** Re-parses a stored recipe, repairing an old cooking time; null (and logged) if it will not parse. */
+    private Recipe<?> parse(ResourceLocation id, JsonObject json) {
+        try {
+            repairCookingTime(id, json);
+            return RecipeManager.fromJson(id, json);
+        } catch (Exception e) {
+            SimpleCraftEditor.LOGGER.warn("Skipping recipe '{}' that could not be parsed: {}", id, e.getMessage());
+            state().markBroken(id);
+            return null;
+        }
     }
 
 

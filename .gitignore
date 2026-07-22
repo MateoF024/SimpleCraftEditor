@@ -36,3 +36,5 @@ roadmap.md
 # Private technical notes. docs/ itself stays tracked because the readme image lives there,
 # so the document is ignored by name rather than the folder.
 docs/PROJECT_STATE.md
+
+docs/ANALISIS_1.1.0.md

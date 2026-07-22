@@ -119,9 +119,15 @@ public final class SceDebug {
         }
     }
 
-    /** A short human-readable summary of what is on, for the status command. */
+    /** What is on, in words, for the status command: "off", "everything", or the areas by name. */
     public static String describe() {
-        return active.isEmpty() ? "off" : active.toString();
+        if (active.isEmpty()) {
+            return "off";
+        }
+        if (active.size() == Category.values().length) {
+            return "on (everything)";
+        }
+        return "on for " + specString().replace(",", ", ");
     }
 
     // ------------------------------------------------------------------ startup + persistence

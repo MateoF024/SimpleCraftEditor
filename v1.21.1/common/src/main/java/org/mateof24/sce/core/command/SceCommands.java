@@ -135,6 +135,9 @@ public final class SceCommands {
         int rawCache = RecipeStateManager.INSTANCE.rawJsonCacheSize();
         source.sendSuccess(() -> Component.translatable("sce.cmd.debug_status", live, rawCache,
                 RecipeStateManager.INSTANCE.baseSnapshotSize()), false);
+        // Spelled out rather than left to the tab-completion, so someone reading a bug report knows what
+        // to turn on without having to learn the command first.
+        source.sendSuccess(() -> Component.translatable("sce.cmd.debug_help"), false);
         SceDebug.reportEnvironment();
         return 1;
     }
