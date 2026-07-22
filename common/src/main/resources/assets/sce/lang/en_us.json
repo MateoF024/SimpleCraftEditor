@@ -108,6 +108,8 @@
   "sce.cmd.deleted": "Deleted generated recipe %s",
   "sce.cmd.delete_failed": "No generated recipe with id %s.",
   "sce.cmd.reloaded": "Re-applied recipe state.",
+  "sce.cmd.debug": "SCE debug: %s",
+  "sce.cmd.debug_status": "Recipes live: %s | raw JSON cache: %s | base snapshot: %s",
   "sce.cmd.list_empty": "No %s recipes.",
   "sce.cmd.list": "%s %s: %s",
   "sce.cmd.kind.disabled": "disabled",

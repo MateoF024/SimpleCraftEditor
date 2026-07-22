@@ -43,6 +43,8 @@
   "sce.cmd.deleted": "Receta generada %s eliminada",
   "sce.cmd.delete_failed": "No hay ninguna receta generada con id %s.",
   "sce.cmd.reloaded": "Estado de recetas reaplicado.",
+  "sce.cmd.debug": "Debug SCE: %s",
+  "sce.cmd.debug_status": "Recetas activas: %s | caché JSON crudo: %s | snapshot base: %s",
   "sce.cmd.list_empty": "No hay recetas %s.",
   "sce.cmd.list": "%s %s: %s",
   "sce.cmd.kind.disabled": "desactivadas",

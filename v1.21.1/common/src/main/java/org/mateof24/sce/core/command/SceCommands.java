@@ -12,6 +12,7 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.state.RecipeState;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.net.SceNetworking;
@@ -67,7 +68,53 @@ public final class SceCommands {
                 .then(Commands.literal("list")
                         .then(Commands.literal("disabled").executes(context -> list(context, "disabled")))
                         .then(Commands.literal("generated").executes(context -> list(context, "generated"))))
-                .then(Commands.literal("reload").executes(SceCommands::reload)));
+                .then(Commands.literal("reload").executes(SceCommands::reload))
+                .then(buildDebug()));
+    }
+
+    /**
+     * {@code /sce debug true|false} toggles all logging; {@code /sce debug <category> true|false} scopes
+     * it; {@code /sce debug status} prints the state and an immediate diagnostic dump. The toggle persists
+     * so the next startup begins with it — the load-a-recipe failure happens before a command can run.
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildDebug() {
+        com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug");
+        debug.then(Commands.literal("status").executes(SceCommands::debugStatus));
+        debug.then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                .executes(context -> setDebug(context, null)));
+        for (SceDebug.Category category : SceDebug.Category.values()) {
+            debug.then(Commands.literal(category.name().toLowerCase(java.util.Locale.ROOT))
+                    .then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                            .executes(context -> setDebug(context, category))));
+        }
+        return debug;
+    }
+
+    private static int setDebug(CommandContext<CommandSourceStack> context, SceDebug.Category category) {
+        boolean on = com.mojang.brigadier.arguments.BoolArgumentType.getBool(context, "on");
+        if (category == null) {
+            SceDebug.setAll(on);
+        } else {
+            SceDebug.set(category, on);
+        }
+        SceDebug.persist();
+        SceNetworking.syncDebugToAll(context.getSource().getServer());
+        context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.debug", SceDebug.describe()), true);
+        return 1;
+    }
+
+    private static int debugStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.translatable("sce.cmd.debug", SceDebug.describe()), false);
+        // The numbers that settle the load-a-recipe bug: does the raw cache hold anything, and how does it
+        // compare to what the RecipeManager actually has.
+        int live = server.getRecipeManager().getRecipes().size();
+        int rawCache = RecipeStateManager.INSTANCE.rawJsonCacheSize();
+        source.sendSuccess(() -> Component.translatable("sce.cmd.debug_status", live, rawCache,
+                RecipeStateManager.INSTANCE.baseSnapshotSize()), false);
+        SceDebug.reportEnvironment();
+        return 1;
     }
 
     private static int disable(CommandContext<CommandSourceStack> context) {

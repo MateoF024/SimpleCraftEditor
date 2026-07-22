@@ -25,6 +25,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import org.jetbrains.annotations.Nullable;
 import org.mateof24.sce.SimpleCraftEditor;
+import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
@@ -310,6 +311,11 @@ public final class SceNetworking {
         }
     }
 
+    /** Pushes the current debug mask to every client, so their screens log under the same categories. */
+    public static void syncDebugToAll(MinecraftServer server) {
+        syncToAll(server); // the debug mask rides along in the sync packet
+    }
+
     public static void syncTo(ServerPlayer player) {
         MinecraftServer server = player.getServer();
         if (server == null) {
@@ -319,6 +325,7 @@ public final class SceNetworking {
         RegistryFriendlyByteBuf buf = serverBuffer(player);
 
         buf.writeBoolean(mayEdit(player)); // whether this player may open the editor at all
+        buf.writeVarInt(SceDebug.mask());  // so the client logs the same categories the server does
 
         Map<ResourceLocation, JsonObject> disabled = manager.state().disabled();
         buf.writeVarInt(disabled.size());

@@ -23,6 +23,7 @@ import org.mateof24.sce.client.screen.RawRecipeScreen;
 import org.mateof24.sce.client.screen.RecipeEditorScreen;
 import org.mateof24.sce.client.screen.RecipeManagerScreen;
 import org.mateof24.sce.client.screen.SequencedAssemblyScreen;
+import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.net.SceNetworking;
 import org.mateof24.sce.registry.SceMenus;
 
@@ -82,6 +83,8 @@ public final class SceClient {
             cycleIndex = (cycleIndex + 1) % recipes.size();
         }
         ResourceLocation picked = recipes.get(cycleIndex);
+        SceDebug.dump(SceDebug.Category.CLIENT, () -> "K over " + hovered.getItem() + ": "
+                + recipes.size() + " recipe(s) " + recipes + ", loading " + picked);
         if (minecraft.player != null) {
             minecraft.player.displayClientMessage(Component.translatable(
                     "sce.msg.recipe_cycle", cycleIndex + 1, recipes.size(), picked.toString()), false);
@@ -150,9 +153,13 @@ public final class SceClient {
     private static void registerReceivers() {
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.SYNC, (buf, context) -> {
             boolean canEdit = buf.readBoolean();
+            int debugMask = buf.readVarInt();
             List<ClientEditorState.Entry> disabled = readEntries(buf);
             List<ClientEditorState.Entry> generated = readEntries(buf);
             context.queue(() -> {
+                // In singleplayer this is the same JVM as the server, so the mask is already set; on a
+                // dedicated server this is how the client learns which categories to log under.
+                SceDebug.setMask(debugMask);
                 ClientEditorState.setCanEdit(canEdit);
                 ClientEditorState.setDisabled(disabled);
                 ClientEditorState.setGenerated(generated);

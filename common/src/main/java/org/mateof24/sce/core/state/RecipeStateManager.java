@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
+import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.edit.RecipeDraft;
 
 import java.util.ArrayList;
@@ -52,6 +53,9 @@ public final class RecipeStateManager {
     /** Called from {@code RecipeManagerMixin} once vanilla has finished loading the datapack recipes. */
     public void onRecipesReloaded(RecipeManager manager, Map<ResourceLocation, JsonElement> rawRecipes) {
         RecipeState s = state();
+        SceDebug.reportEnvironment();
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "onRecipesReloaded fired: rawRecipes={}, liveRecipes={}", rawRecipes.size(), manager.getRecipes().size());
         rawJsonCache.clear();
         rawJsonCache.putAll(rawRecipes);
         baseSnapshot = List.copyOf(manager.getRecipes());
@@ -157,6 +161,7 @@ public final class RecipeStateManager {
     }
 
     public boolean saveGenerated(MinecraftServer server, ResourceLocation id, JsonObject json) {
+        SceDebug.dump(SceDebug.Category.EDIT, () -> "saveGenerated '" + id + "': " + json);
         String rejection = rejectionReason(json);
         if (rejection != null) {
             SimpleCraftEditor.LOGGER.warn("Rejected authored recipe '{}': {}", id, rejection);
@@ -170,6 +175,8 @@ public final class RecipeStateManager {
         }
         state().putGenerated(id, json);
         reapplyAndSync(server, server.getRecipeManager());
+        SceDebug.log(SceDebug.Category.EDIT, "Saved '{}'; baseSnapshot={}, generated={}",
+                id, baseSnapshot.size(), state().generated().size());
         return true;
     }
 
@@ -178,10 +185,23 @@ public final class RecipeStateManager {
         return raw != null && raw.isJsonObject() ? raw.getAsJsonObject() : null;
     }
 
+    /** How many datapack recipe sources were captured — zero here is the load-a-recipe bug. */
+    public int rawJsonCacheSize() {
+        return rawJsonCache.size();
+    }
+
+    public int baseSnapshotSize() {
+        return baseSnapshot.size();
+    }
+
     /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
     public JsonObject editorJson(ResourceLocation id) {
         JsonObject generated = state().generated().get(id);
-        return generated != null ? generated : rawJson(id);
+        JsonObject result = generated != null ? generated : rawJson(id);
+        SceDebug.log(SceDebug.Category.EDIT, "editorJson '{}': source={}, rawCacheSize={}",
+                id, generated != null ? "generated" : (result != null ? "rawCache" : "NONE (opens empty)"),
+                rawJsonCache.size());
+        return result;
     }
 
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */
