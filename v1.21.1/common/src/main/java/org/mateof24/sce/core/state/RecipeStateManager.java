@@ -41,9 +41,6 @@ public final class RecipeStateManager {
 
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
-    private List<RecipeHolder<?>> baseSnapshot = List.of();
-    /** See the 1.20.1 mirror: whether the base was captured, distinct from an empty list. Runtime edits only. */
-    private boolean baseCaptured;
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
 
@@ -63,13 +60,14 @@ public final class RecipeStateManager {
      */
     public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
         SceDebug.reportEnvironment();
-        SceDebug.log(SceDebug.Category.RELOAD, "beforeRecipeLoad ENTER: {} entries in a {}",
-                map.size(), map.getClass().getName());
+        RecipeState s = state();
+        long alreadyPresent = s.generated().keySet().stream().filter(map::containsKey).count();
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "beforeRecipeLoad ENTER: {} entries in {} (mapId={}), {} of our generated ids already present",
+                map.size(), map.getClass().getName(), System.identityHashCode(map), alreadyPresent);
         rawJsonCache.clear();
         rawJsonCache.putAll(map);
-        baseCaptured = false;
 
-        RecipeState s = state();
         int removed = 0;
         for (ResourceLocation id : s.disabled().keySet()) {
             if (map.remove(id) != null) {
@@ -83,6 +81,7 @@ public final class RecipeStateManager {
                 continue;
             }
             try {
+                repairCookingTime(entry.getKey(), entry.getValue());
                 map.put(entry.getKey(), entry.getValue());
                 added++;
                 if (entry.getValue().equals(map.get(entry.getKey()))) {
@@ -126,45 +125,6 @@ public final class RecipeStateManager {
             state = RecipeStore.load();
         }
         return state;
-    }
-
-    private void applyTo(RecipeManager manager) {
-        if (!baseCaptured) {
-            // Our reload hook never ran — another mod (KubeJS) took over recipe loading. Treat the live set
-            // as the base instead of wiping it down to our generated recipes. See the 1.20.1 mirror.
-            baseSnapshot = List.copyOf(manager.getRecipes());
-            baseCaptured = true;
-            SceDebug.log(SceDebug.Category.RELOAD,
-                    "Base not captured by the reload hook; falling back to the live set of {} recipes.",
-                    baseSnapshot.size());
-        }
-        RecipeState s = state();
-        List<RecipeHolder<?>> result = new ArrayList<>(baseSnapshot.size());
-        for (RecipeHolder<?> holder : baseSnapshot) {
-            ResourceLocation id = holder.id();
-            if (s.isDisabled(id)) {
-                continue;
-            }
-            if (s.isGenerated(id)) {
-                continue; // a generated entry with the same id overrides the base recipe
-            }
-            result.add(holder);
-        }
-        for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
-            if (s.isGeneratedDisabled(entry.getKey())) {
-                continue; // a generated recipe that is toggled off is kept but not injected
-            }
-            RecipeHolder<?> parsed = parse(entry.getKey(), entry.getValue());
-            if (parsed != null) {
-                result.add(parsed);
-            }
-        }
-        int injected = result.size() - (baseSnapshot.size() - s.disabled().size());
-        SceDebug.log(SceDebug.Category.RELOAD, "applyTo: base={}, disabled={}, generated={} -> result={}",
-                baseSnapshot.size(), s.disabled().size(), s.generated().size(), result.size());
-        manager.replaceRecipes(result);
-        SceDebug.log(SceDebug.Category.RELOAD, "replaceRecipes done: live now={} ({} generated injected)",
-                manager.getRecipes().size(), injected);
     }
 
     // ------------------------------------------------------------------ runtime mutations (server thread)
@@ -253,8 +213,8 @@ public final class RecipeStateManager {
         }
         state().putGenerated(id, json);
         reapplyAndSync(server, server.getRecipeManager());
-        SceDebug.log(SceDebug.Category.EDIT, "Saved '{}'; baseSnapshot={}, generated={}",
-                id, baseSnapshot.size(), state().generated().size());
+        SceDebug.log(SceDebug.Category.EDIT, "Saved '{}'; sources={}, generated={}",
+                id, rawJsonCache.size(), state().generated().size());
         return true;
     }
 
@@ -268,8 +228,9 @@ public final class RecipeStateManager {
         return rawJsonCache.size();
     }
 
+    /** Datapack recipe sources captured — the base the reload rebuilds from. */
     public int baseSnapshotSize() {
-        return baseSnapshot.size();
+        return rawJsonCache.size();
     }
 
     /** JSON to prefill the editor with: a generated recipe's own definition, else the datapack original. */
@@ -304,12 +265,7 @@ public final class RecipeStateManager {
 
     /** True if a datapack recipe with this id existed before our edits (a generated recipe is then an edit). */
     public boolean wasBaseRecipe(ResourceLocation id) {
-        for (RecipeHolder<?> holder : baseSnapshot) {
-            if (holder.id().equals(id)) {
-                return true;
-            }
-        }
-        return false;
+        return rawJsonCache.containsKey(id);
     }
 
     public boolean cloneRecipe(MinecraftServer server, ResourceLocation source, ResourceLocation target) {
@@ -335,14 +291,16 @@ public final class RecipeStateManager {
     }
 
     private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
-        // A runtime edit parses the generated recipe via the codec, which needs the registries.
-        registries = server.registryAccess();
-        applyTo(manager);
-        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(state());
-        if (changeListener != null) {
-            changeListener.accept(server);
-        }
+        // See the 1.20.1 mirror: rebuild the recipe set through a datapack reload rather than replacing
+        // recipes on the live manager, so create/disable/delete take effect cleanly under mods that own
+        // recipe loading, and every recipe viewer refreshes with the reload.
+        SceDebug.log(SceDebug.Category.EDIT, "reapplyAndSync: reloading datapacks to apply recipe state");
+        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() -> {
+            if (changeListener != null) {
+                changeListener.accept(server);
+            }
+        });
     }
 
     /** Decodes recipe JSON into a holder with the registry-aware codec; throws if the JSON is invalid. */
@@ -375,22 +333,9 @@ public final class RecipeStateManager {
                 id, cooking.defaultTime);
     }
 
-    private RecipeHolder<?> parse(ResourceLocation id, JsonObject json) {
-        try {
-            repairCookingTime(id, json);
-            return deserialize(id, json);
-        } catch (Exception e) {
-            SimpleCraftEditor.LOGGER.warn("Skipping recipe '{}' that could not be parsed: {}", id, e.getMessage());
-            state().markBroken(id);
-            return null;
-        }
-    }
-
     /** Clears session-scoped caches when a server stops (so singleplayer world switches start clean). */
     public void onServerStopped() {
         rawJsonCache.clear();
-        baseSnapshot = List.of();
-        baseCaptured = false;
         registries = null;
         state = null; // re-read from the global config on next use
     }
