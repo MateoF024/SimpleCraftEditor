@@ -10,6 +10,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.core.SceDebug;
+import org.mateof24.sce.core.compat.PolymorphRecipeSelection;
 import org.mateof24.sce.core.edit.RecipeDraft;
 
 import java.util.ArrayList;
@@ -479,6 +480,7 @@ public final class RecipeStateManager {
             return;
         }
         invalidateDerivedCaches(manager);
+        PolymorphRecipeSelection.clearRemembered(server);
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(s);
         reportApplied(manager, result.size());
