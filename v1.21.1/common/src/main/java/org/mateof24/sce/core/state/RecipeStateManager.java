@@ -63,6 +63,19 @@ public final class RecipeStateManager {
     }
 
     /**
+     * Applies our state once the server has fully started. See the 1.20.1 mirror: the reload listener can
+     * fire before the server reference exists on the initial load, so generated recipes were missing until
+     * the first edit. By SERVER_STARTED the recipes are loaded and the registries are available.
+     */
+    public void onServerStarted(MinecraftServer server) {
+        this.server = server;
+        this.registries = server.registryAccess();
+        RecipeManager manager = server.getRecipeManager();
+        applyTo(manager);
+        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+    }
+
+    /**
      * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
      * The capture path that survives KubeJS: refreshes the source cache, forgets the stale base snapshot,
      * and re-applies our state on the server thread once the reload has settled and the registries and
@@ -126,7 +139,12 @@ public final class RecipeStateManager {
                 result.add(parsed);
             }
         }
+        int injected = result.size() - (baseSnapshot.size() - s.disabled().size());
+        SceDebug.log(SceDebug.Category.RELOAD, "applyTo: base={}, disabled={}, generated={} -> result={}",
+                baseSnapshot.size(), s.disabled().size(), s.generated().size(), result.size());
         manager.replaceRecipes(result);
+        SceDebug.log(SceDebug.Category.RELOAD, "replaceRecipes done: live now={} ({} generated injected)",
+                manager.getRecipes().size(), injected);
     }
 
     // ------------------------------------------------------------------ runtime mutations (server thread)

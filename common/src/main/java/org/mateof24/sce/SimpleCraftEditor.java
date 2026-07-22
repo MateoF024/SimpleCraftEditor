@@ -34,6 +34,7 @@ public final class SimpleCraftEditor {
         ReloadListenerRegistry.register(PackType.SERVER_DATA, new RecipeReloadListener(),
                 RecipeReloadListener.ID, List.of(net.minecraft.resources.ResourceLocation.tryParse("minecraft:recipes")));
         LifecycleEvent.SERVER_BEFORE_START.register(server -> RecipeStateManager.INSTANCE.setServer(server));
+        LifecycleEvent.SERVER_STARTED.register(server -> RecipeStateManager.INSTANCE.onServerStarted(server));
         LifecycleEvent.SERVER_STOPPED.register(server -> RecipeStateManager.INSTANCE.onServerStopped());
         LOGGER.info("Initializing Simple Craft Editor common.");
     }

@@ -59,6 +59,20 @@ public final class RecipeStateManager {
     }
 
     /**
+     * Applies our state once the server has fully started. The reload listener covers later {@code /reload}s,
+     * but on the initial load it can fire before the server reference exists (the first datapack load runs
+     * during world setup), so nothing re-applied and generated recipes were missing until the first edit.
+     * By SERVER_STARTED the recipes are loaded — including by any mod that took the load over — so applying
+     * now lands our disabled/generated set on top of the finished recipe manager.
+     */
+    public void onServerStarted(MinecraftServer server) {
+        this.server = server;
+        RecipeManager manager = server.getRecipeManager();
+        applyTo(manager);
+        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+    }
+
+    /**
      * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
      * This is the capture path that survives KubeJS. It refreshes the source cache and, since a reload has
      * just replaced the recipe set, forgets the old base snapshot and re-applies our disabled/generated
@@ -127,7 +141,12 @@ public final class RecipeStateManager {
                 result.add(parsed);
             }
         }
+        int injected = result.size() - (baseSnapshot.size() - s.disabled().size());
+        SceDebug.log(SceDebug.Category.RELOAD, "applyTo: base={}, disabled={}, generated={} -> result={}",
+                baseSnapshot.size(), s.disabled().size(), s.generated().size(), result.size());
         manager.replaceRecipes(result);
+        SceDebug.log(SceDebug.Category.RELOAD, "replaceRecipes done: live now={} ({} generated injected)",
+                manager.getRecipes().size(), injected);
     }
 
     // ------------------------------------------------------------------ runtime mutations (server thread)
