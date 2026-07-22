@@ -20,6 +20,7 @@ import org.mateof24.sce.core.edit.RecipeDraft;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -370,18 +371,37 @@ public final class RecipeStateManager {
      * keyed on the ids we injected at load time rather than on what is generated right now.
      */
     private List<RecipeHolder<?>> pureBase(RecipeManager manager) {
-        if (!pureBaseKnown) {
-            List<RecipeHolder<?>> base = new ArrayList<>(manager.getRecipes().size());
-            for (RecipeHolder<?> holder : manager.getRecipes()) {
-                if (!injectedIds.contains(holder.id())) {
-                    base.add(holder);
-                }
-            }
-            pureBase = List.copyOf(base);
-            pureBaseKnown = true;
-            SceDebug.log(SceDebug.Category.RELOAD, "Base without our recipes: {} of {} live ({} were ours)",
-                    pureBase.size(), manager.getRecipes().size(), injectedIds.size());
+        if (pureBaseKnown) {
+            return pureBase;
         }
+        Map<ResourceLocation, RecipeHolder<?>> base = new LinkedHashMap<>();
+        for (RecipeHolder<?> holder : manager.getRecipes()) {
+            if (!injectedIds.contains(holder.id())) {
+                base.put(holder.id(), holder);
+            }
+        }
+        // A recipe that was already disabled when the pack loaded was taken out of the load, so it is not
+        // in the live set to be found here. It still belongs in the base — see the 1.20.1 mirror.
+        int recovered = 0;
+        for (ResourceLocation id : state().disabled().keySet()) {
+            if (base.containsKey(id)) {
+                continue;
+            }
+            JsonElement raw = rawJsonCache.get(id);
+            if (raw == null || !raw.isJsonObject()) {
+                continue;
+            }
+            RecipeHolder<?> parsed = parse(id, raw.getAsJsonObject().deepCopy());
+            if (parsed != null) {
+                base.put(id, parsed);
+                recovered++;
+            }
+        }
+        pureBase = List.copyOf(base.values());
+        pureBaseKnown = true;
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "The pack's own recipes: {} ({} of the {} loaded were ours, {} disabled ones read back in)",
+                pureBase.size(), injectedIds.size(), manager.getRecipes().size(), recovered);
         return pureBase;
     }
 
@@ -392,13 +412,16 @@ public final class RecipeStateManager {
     private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
         RecipeState s = state();
         List<RecipeHolder<?>> base = pureBase(manager);
-        List<RecipeHolder<?>> result = new ArrayList<>(base.size() + s.generated().size());
+        // Keyed by id rather than a plain list: replaceRecipes throws on a duplicate id and, because it
+        // builds the new maps before assigning them, a throw leaves the live recipes completely untouched
+        // — the edit would silently do nothing until someone reloaded. Keying makes that impossible.
+        Map<ResourceLocation, RecipeHolder<?>> result = new LinkedHashMap<>();
         for (RecipeHolder<?> holder : base) {
             ResourceLocation id = holder.id();
             if (s.isDisabled(id) || s.isGenerated(id)) {
                 continue; // disabled, or about to be replaced by our own version of the same id
             }
-            result.add(holder);
+            result.put(id, holder);
         }
         // An id we injected is missing from the base, so if it was an edit of a pack recipe and that edit is
         // now gone, the pack's own version has to come back — otherwise deleting an edit would delete the
@@ -414,7 +437,7 @@ public final class RecipeStateManager {
             }
             RecipeHolder<?> parsed = parse(id, original.getAsJsonObject().deepCopy());
             if (parsed != null) {
-                result.add(parsed);
+                result.put(id, parsed);
                 restored++;
             }
         }
@@ -424,13 +447,20 @@ public final class RecipeStateManager {
             }
             RecipeHolder<?> parsed = parse(entry.getKey(), entry.getValue());
             if (parsed != null) {
-                result.add(parsed);
+                result.put(entry.getKey(), parsed);
             }
         }
         SceDebug.log(SceDebug.Category.EDIT,
                 "Applying: {} pack recipes - {} disabled + {} of ours + {} restored originals = {} live",
                 base.size(), s.disabled().size(), s.generated().size(), restored, result.size());
-        manager.replaceRecipes(result);
+        try {
+            manager.replaceRecipes(result.values());
+        } catch (Exception e) {
+            // Never silently: if the recipe set cannot be swapped, the edit did not happen, and whoever
+            // made it needs to see why rather than watch it appear to work and then not.
+            SimpleCraftEditor.LOGGER.error("Could not apply the recipe edit to the running game", e);
+            return;
+        }
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(s);
         if (changeListener != null) {

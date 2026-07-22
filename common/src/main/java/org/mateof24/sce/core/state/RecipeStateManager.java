@@ -15,6 +15,7 @@ import org.mateof24.sce.core.edit.RecipeDraft;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -381,18 +382,39 @@ public final class RecipeStateManager {
      * injected — not on what is generated right now — is what makes a deletion actually delete.
      */
     private List<Recipe<?>> pureBase(RecipeManager manager) {
-        if (!pureBaseKnown) {
-            List<Recipe<?>> base = new ArrayList<>(manager.getRecipes().size());
-            for (Recipe<?> recipe : manager.getRecipes()) {
-                if (!injectedIds.contains(recipe.getId())) {
-                    base.add(recipe);
-                }
-            }
-            pureBase = List.copyOf(base);
-            pureBaseKnown = true;
-            SceDebug.log(SceDebug.Category.RELOAD, "Base without our recipes: {} of {} live ({} were ours)",
-                    pureBase.size(), manager.getRecipes().size(), injectedIds.size());
+        if (pureBaseKnown) {
+            return pureBase;
         }
+        Map<ResourceLocation, Recipe<?>> base = new LinkedHashMap<>();
+        for (Recipe<?> recipe : manager.getRecipes()) {
+            if (!injectedIds.contains(recipe.getId())) {
+                base.put(recipe.getId(), recipe);
+            }
+        }
+        // A recipe that was already disabled when the pack loaded was taken out of the load, so it is not
+        // in the live set to be found here. It still belongs in the base: the base is what the pack ships,
+        // and re-enabling one has to bring it back in the same session, without a reload. Parse it back
+        // from the pack's own JSON, which was captured before anything was removed.
+        int recovered = 0;
+        for (ResourceLocation id : state().disabled().keySet()) {
+            if (base.containsKey(id)) {
+                continue;
+            }
+            JsonElement raw = rawJsonCache.get(id);
+            if (raw == null || !raw.isJsonObject()) {
+                continue;
+            }
+            Recipe<?> parsed = parse(id, raw.getAsJsonObject().deepCopy());
+            if (parsed != null) {
+                base.put(id, parsed);
+                recovered++;
+            }
+        }
+        pureBase = List.copyOf(base.values());
+        pureBaseKnown = true;
+        SceDebug.log(SceDebug.Category.RELOAD,
+                "The pack's own recipes: {} ({} of the {} loaded were ours, {} disabled ones read back in)",
+                pureBase.size(), injectedIds.size(), manager.getRecipes().size(), recovered);
         return pureBase;
     }
 
@@ -407,13 +429,16 @@ public final class RecipeStateManager {
     private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
         RecipeState s = state();
         List<Recipe<?>> base = pureBase(manager);
-        List<Recipe<?>> result = new ArrayList<>(base.size() + s.generated().size());
+        // Keyed by id rather than a plain list: replaceRecipes throws on a duplicate id and, because it
+        // builds the new maps before assigning them, a throw leaves the live recipes completely untouched
+        // — the edit would silently do nothing until someone reloaded. Keying makes that impossible.
+        Map<ResourceLocation, Recipe<?>> result = new LinkedHashMap<>();
         for (Recipe<?> recipe : base) {
             ResourceLocation id = recipe.getId();
             if (s.isDisabled(id) || s.isGenerated(id)) {
                 continue; // disabled, or about to be replaced by our own version of the same id
             }
-            result.add(recipe);
+            result.put(id, recipe);
         }
         // An id we injected is missing from the base, so if it was an edit of a pack recipe and that edit is
         // now gone, the pack's own version has to come back — otherwise deleting an edit would delete the
@@ -429,7 +454,7 @@ public final class RecipeStateManager {
             }
             Recipe<?> parsed = parse(id, original.getAsJsonObject().deepCopy());
             if (parsed != null) {
-                result.add(parsed);
+                result.put(id, parsed);
                 restored++;
             }
         }
@@ -439,13 +464,20 @@ public final class RecipeStateManager {
             }
             Recipe<?> parsed = parse(entry.getKey(), entry.getValue());
             if (parsed != null) {
-                result.add(parsed);
+                result.put(entry.getKey(), parsed);
             }
         }
         SceDebug.log(SceDebug.Category.EDIT,
                 "Applying: {} pack recipes - {} disabled + {} of ours + {} restored originals = {} live",
                 base.size(), s.disabled().size(), s.generated().size(), restored, result.size());
-        manager.replaceRecipes(result);
+        try {
+            manager.replaceRecipes(result.values());
+        } catch (Exception e) {
+            // Never silently: if the recipe set cannot be swapped, the edit did not happen, and whoever
+            // made it needs to see why rather than watch it appear to work and then not.
+            SimpleCraftEditor.LOGGER.error("Could not apply the recipe edit to the running game", e);
+            return;
+        }
         server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
         RecipeStore.save(s);
         if (changeListener != null) {
