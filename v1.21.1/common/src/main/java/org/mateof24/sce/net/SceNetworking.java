@@ -146,6 +146,9 @@ public final class SceNetworking {
         PlayerEvent.PLAYER_JOIN.register(SceNetworking::syncTo);
         PlayerEvent.PLAYER_QUIT.register(player -> lastPermission.remove(player.getUUID()));
         TickEvent.SERVER_POST.register(SceNetworking::trackPermissions);
+        // A script-driven mod writes its recipes after the load, so the pack's edits go on again once the
+        // load is over. Costs a boolean check per tick when there is nothing to do.
+        TickEvent.SERVER_POST.register(RecipeStateManager.INSTANCE::applyAfterLoad);
     }
 
     private static void handleSave(Player sender, ResourceLocation id, String json) {

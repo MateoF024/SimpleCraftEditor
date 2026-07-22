@@ -48,6 +48,8 @@ public final class RecipeStateManager {
     /** The pack's recipes without ours, worked out once per load and reused by every edit after it. */
     private List<Recipe<?>> pureBase = List.of();
     private boolean pureBaseKnown;
+    /** Set when a load starts, cleared when {@link #applyAfterLoad} has had its turn. */
+    private boolean applyPending;
     private Consumer<MinecraftServer> changeListener;
 
     private RecipeStateManager() {
@@ -83,6 +85,7 @@ public final class RecipeStateManager {
         injectedIds.clear();
         pureBase = List.of();
         pureBaseKnown = false;
+        applyPending = true;
 
         int removed = 0;
         for (ResourceLocation id : s.disabled().keySet()) {
@@ -118,6 +121,35 @@ public final class RecipeStateManager {
         SceDebug.log(SceDebug.Category.RELOAD,
                 "Recipes ready: {} from the pack, {} disabled by us removed, {} of ours added ({} confirmed).",
                 rawJsonCache.size(), removed, added, verified);
+    }
+
+    /**
+     * Applies the state once more after a recipe load has finished, on the first tick that follows it.
+     *
+     * <p>Editing the raw JSON before the load settles it for anything built from that JSON, but not for a
+     * recipe a script creates. A KubeJS or CraftTweaker script runs on every load and writes its recipes
+     * straight into the manager afterwards, so it puts back the one we removed and overwrites the one we
+     * changed. It has the last word during the load, by design, and nothing we do inside the load can take
+     * that away — nor should it.
+     *
+     * <p>It only has the last word during the load, though. Applying again once the load is over settles
+     * it: the script has had its say, and the pack's own edits go on top. This is what 1.0.0 did at the
+     * tail of the load, which stopped running when the hook moved to the head to survive KubeJS cancelling
+     * it — a tick later is a place nobody can cancel.
+     *
+     * <p>Nothing happens when the pack has no edits, which is the ordinary case.
+     */
+    public void applyAfterLoad(MinecraftServer server) {
+        if (!applyPending) {
+            return;
+        }
+        applyPending = false;
+        RecipeState s = state();
+        if (s.disabled().isEmpty() && s.generated().isEmpty()) {
+            return;
+        }
+        SceDebug.log(SceDebug.Category.RELOAD, "Recipes finished loading; applying this pack's edits on top");
+        reapplyAndSync(server, server.getRecipeManager());
     }
 
     /**
