@@ -33,7 +33,17 @@ public final class RecipeStateManager {
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
     private List<Recipe<?>> baseSnapshot = List.of();
+    /**
+     * Whether {@link #baseSnapshot} was ever actually captured. Distinct from "empty": a real reload with
+     * zero recipes and a reload that never ran both leave the list empty, and the difference is the whole
+     * safety of {@link #applyTo}. False means we hold no picture of the base set, so replacing the live
+     * recipes with our filtered list would wipe everything the game loaded — which is exactly what happened
+     * under KubeJS, whose recipe hook cancels the vanilla load our capture was riding on.
+     */
+    private boolean baseCaptured;
     private Consumer<MinecraftServer> changeListener;
+    /** The running server, so the reload listener can re-apply state after the recipes finish loading. */
+    private MinecraftServer server;
 
     private RecipeStateManager() {
     }
@@ -43,6 +53,38 @@ public final class RecipeStateManager {
         this.changeListener = listener;
     }
 
+    /** Held from server start so the reload listener can re-apply state once recipes are loaded. */
+    public void setServer(MinecraftServer server) {
+        this.server = server;
+    }
+
+    /**
+     * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
+     * This is the capture path that survives KubeJS. It refreshes the source cache and, since a reload has
+     * just replaced the recipe set, forgets the old base snapshot and re-applies our disabled/generated
+     * state onto the freshly loaded recipes — on the server thread, after the reload has fully settled.
+     */
+    public void onDatapackRecipesScanned(Map<ResourceLocation, JsonElement> sources) {
+        SceDebug.reportEnvironment();
+        rawJsonCache.clear();
+        rawJsonCache.putAll(sources);
+        baseCaptured = false; // a reload replaced the recipes; the next apply must snapshot them anew
+        SceDebug.log(SceDebug.Category.RELOAD, "Recipe sources scanned: {} entries", sources.size());
+        if (server != null) {
+            // Defer to the server thread: the reload is still finishing, and the recipe manager must be
+            // fully populated (by vanilla or by whoever took over) before we snapshot and re-apply.
+            MinecraftServer captured = server;
+            captured.execute(() -> {
+                RecipeManager manager = captured.getRecipeManager();
+                applyTo(manager);
+                captured.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+                if (changeListener != null) {
+                    changeListener.accept(captured);
+                }
+            });
+        }
+    }
+
     public RecipeState state() {
         if (state == null) {
             state = RecipeStore.load();
@@ -50,21 +92,20 @@ public final class RecipeStateManager {
         return state;
     }
 
-    /** Called from {@code RecipeManagerMixin} once vanilla has finished loading the datapack recipes. */
-    public void onRecipesReloaded(RecipeManager manager, Map<ResourceLocation, JsonElement> rawRecipes) {
-        RecipeState s = state();
-        SceDebug.reportEnvironment();
-        SceDebug.log(SceDebug.Category.RELOAD,
-                "onRecipesReloaded fired: rawRecipes={}, liveRecipes={}", rawRecipes.size(), manager.getRecipes().size());
-        rawJsonCache.clear();
-        rawJsonCache.putAll(rawRecipes);
-        baseSnapshot = List.copyOf(manager.getRecipes());
-        applyTo(manager);
-        SimpleCraftEditor.LOGGER.info("Applied recipe state: {} disabled, {} generated (from {} base recipes).",
-                s.disabled().size(), s.generated().size(), baseSnapshot.size());
-    }
-
     private void applyTo(RecipeManager manager) {
+        if (!baseCaptured) {
+            // Our reload hook never ran — another mod (KubeJS) took over recipe loading and cancelled the
+            // vanilla load our capture rode on. Rather than replace the live recipes with only our
+            // generated ones — which is exactly the wipe that destroyed a pack's recipes — treat the live
+            // set as the base. At the first edit after a reload it is the full, unfiltered set the game
+            // just loaded, which is what a snapshot would have held anyway. This both prevents the wipe and
+            // lets disable/generate work under KubeJS.
+            baseSnapshot = List.copyOf(manager.getRecipes());
+            baseCaptured = true;
+            SceDebug.log(SceDebug.Category.RELOAD,
+                    "Base not captured by the reload hook; falling back to the live set of {} recipes.",
+                    baseSnapshot.size());
+        }
         RecipeState s = state();
         List<Recipe<?>> result = new ArrayList<>(baseSnapshot.size());
         for (Recipe<?> recipe : baseSnapshot) {
@@ -303,6 +344,8 @@ public final class RecipeStateManager {
     public void onServerStopped() {
         rawJsonCache.clear();
         baseSnapshot = List.of();
+        baseCaptured = false;
+        server = null;
         state = null; // re-read from the global config on next use
     }
 }

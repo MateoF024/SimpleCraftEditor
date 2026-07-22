@@ -42,8 +42,12 @@ public final class RecipeStateManager {
     private RecipeState state;
     private final Map<ResourceLocation, JsonElement> rawJsonCache = new HashMap<>();
     private List<RecipeHolder<?>> baseSnapshot = List.of();
+    /** See the 1.20.1 mirror: whether the base was truly captured, distinct from an empty list. */
+    private boolean baseCaptured;
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
+    /** The running server, so the reload listener can re-apply state after the recipes finish loading. */
+    private MinecraftServer server;
 
     private RecipeStateManager() {
     }
@@ -53,6 +57,37 @@ public final class RecipeStateManager {
         this.changeListener = listener;
     }
 
+    /** Held from server start so the reload listener can re-apply state once recipes are loaded. */
+    public void setServer(MinecraftServer server) {
+        this.server = server;
+    }
+
+    /**
+     * Called by {@link RecipeReloadListener} once the recipe source JSON has been read from the datapacks.
+     * The capture path that survives KubeJS: refreshes the source cache, forgets the stale base snapshot,
+     * and re-applies our state on the server thread once the reload has settled and the registries and
+     * recipe manager are available.
+     */
+    public void onDatapackRecipesScanned(Map<ResourceLocation, JsonElement> sources) {
+        SceDebug.reportEnvironment();
+        rawJsonCache.clear();
+        rawJsonCache.putAll(sources);
+        baseCaptured = false;
+        SceDebug.log(SceDebug.Category.RELOAD, "Recipe sources scanned: {} entries", sources.size());
+        if (server != null) {
+            MinecraftServer captured = server;
+            captured.execute(() -> {
+                registries = captured.registryAccess();
+                RecipeManager manager = captured.getRecipeManager();
+                applyTo(manager);
+                captured.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+                if (changeListener != null) {
+                    changeListener.accept(captured);
+                }
+            });
+        }
+    }
+
     public RecipeState state() {
         if (state == null) {
             state = RecipeStore.load();
@@ -60,23 +95,16 @@ public final class RecipeStateManager {
         return state;
     }
 
-    /** Called from {@code RecipeManagerMixin} once vanilla has finished loading the datapack recipes. */
-    public void onRecipesReloaded(RecipeManager manager, Map<ResourceLocation, JsonElement> rawRecipes,
-                                  HolderLookup.Provider registries) {
-        this.registries = registries;
-        RecipeState s = state();
-        SceDebug.reportEnvironment();
-        SceDebug.log(SceDebug.Category.RELOAD,
-                "onRecipesReloaded fired: rawRecipes={}, liveRecipes={}", rawRecipes.size(), manager.getRecipes().size());
-        rawJsonCache.clear();
-        rawJsonCache.putAll(rawRecipes);
-        baseSnapshot = List.copyOf(manager.getRecipes());
-        applyTo(manager);
-        SimpleCraftEditor.LOGGER.info("Applied recipe state: {} disabled, {} generated (from {} base recipes).",
-                s.disabled().size(), s.generated().size(), baseSnapshot.size());
-    }
-
     private void applyTo(RecipeManager manager) {
+        if (!baseCaptured) {
+            // Our reload hook never ran — another mod (KubeJS) took over recipe loading. Treat the live set
+            // as the base instead of wiping it down to our generated recipes. See the 1.20.1 mirror.
+            baseSnapshot = List.copyOf(manager.getRecipes());
+            baseCaptured = true;
+            SceDebug.log(SceDebug.Category.RELOAD,
+                    "Base not captured by the reload hook; falling back to the live set of {} recipes.",
+                    baseSnapshot.size());
+        }
         RecipeState s = state();
         List<RecipeHolder<?>> result = new ArrayList<>(baseSnapshot.size());
         for (RecipeHolder<?> holder : baseSnapshot) {
@@ -322,6 +350,8 @@ public final class RecipeStateManager {
     public void onServerStopped() {
         rawJsonCache.clear();
         baseSnapshot = List.of();
+        baseCaptured = false;
+        server = null;
         registries = null;
         state = null; // re-read from the global config on next use
     }

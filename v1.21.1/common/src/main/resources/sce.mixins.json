@@ -7,7 +7,6 @@
     "ScreenKeyPressMixin"
   ],
   "mixins": [
-    "RecipeManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
