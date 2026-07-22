@@ -4,7 +4,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
@@ -130,17 +129,56 @@ public final class RecipeStateManager {
      */
     public String findRecipe(MinecraftServer server, ResourceLocation id) {
         RecipeManager manager = server.getRecipeManager();
-        boolean inManager = manager.byKey(id).isPresent();
         RecipeState s = state();
         StringBuilder sb = new StringBuilder("Recipe '" + id + "':");
-        sb.append("\n  live manager (server byName): ").append(inManager ? "PRESENT — the server can craft it" : "absent");
+
+        // The manager keeps two structures that can disagree: byKey reads the byName map, while crafting
+        // and getRecipes read the by-type map. A recipe left in one but not the other reports as absent
+        // here yet still crafts, so both are checked.
+        boolean inByName = manager.byKey(id).isPresent();
+        net.minecraft.world.item.crafting.Recipe<?> inByType = null;
+        for (net.minecraft.world.item.crafting.Recipe<?> recipe : manager.getRecipes()) {
+            if (recipe.getId().equals(id)) {
+                inByType = recipe;
+                break;
+            }
+        }
+        sb.append("\n  byName (byKey): ").append(inByName ? "PRESENT" : "absent");
+        sb.append("\n  by-type set (what crafting reads): ").append(inByType != null ? "PRESENT" : "absent");
+        if (inByName != (inByType != null)) {
+            sb.append("\n  *** THE TWO DISAGREE — that is the bug ***");
+        }
+
         sb.append("\n  our generated set: ").append(s.isGenerated(id) ? "yes" : "no")
                 .append(s.isGeneratedDisabled(id) ? " (toggled off)" : "");
         sb.append("\n  our disabled set: ").append(s.isDisabled(id) ? "yes" : "no");
         sb.append("\n  raw source cache (datapack): ").append(rawJsonCache.containsKey(id) ? "yes" : "no");
-        // If the item result keeps being craftable, another recipe may make the same thing.
-        manager.byKey(id).ifPresent(r ->
-                sb.append("\n  result item: ").append(r.getResultItem(server.registryAccess())));
+
+        // A ghost craft may not be this recipe at all but another one making the same item, so name every
+        // live recipe that produces the same result.
+        net.minecraft.world.item.crafting.Recipe<?> known =
+                inByType != null ? inByType : manager.byKey(id).orElse(null);
+        if (known != null) {
+            ItemStack result = known.getResultItem(server.registryAccess());
+            sb.append("\n  result item: ").append(result);
+            sb.append("\n  other live recipes producing the same item:");
+            int others = 0;
+            for (net.minecraft.world.item.crafting.Recipe<?> recipe : manager.getRecipes()) {
+                if (recipe.getId().equals(id)) {
+                    continue;
+                }
+                ItemStack out = recipe.getResultItem(server.registryAccess());
+                if (!out.isEmpty() && ItemStack.isSameItem(out, result)) {
+                    sb.append("\n    - ").append(recipe.getId()).append(" (").append(recipe.getType()).append(')');
+                    others++;
+                }
+            }
+            if (others == 0) {
+                sb.append(" none");
+            }
+        }
+        sb.append("\n  live totals: by-type ").append(manager.getRecipes().size())
+                .append(", ids ").append(manager.getRecipeIds().count());
         return sb.toString();
     }
 
@@ -316,13 +354,11 @@ public final class RecipeStateManager {
         // the clean datapack source, so create, disable and delete all take effect cleanly, and every
         // recipe viewer refreshes with the reload.
         SceDebug.log(SceDebug.Category.EDIT, "reapplyAndSync: reloading datapacks to apply recipe state");
-        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() ->
-                server.execute(() -> {
-                    closeStaleCraftingMenus(server);
-                    if (changeListener != null) {
-                        changeListener.accept(server);
-                    }
-                }));
+        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() -> {
+            if (changeListener != null) {
+                changeListener.accept(server);
+            }
+        });
     }
 
 
@@ -350,27 +386,8 @@ public final class RecipeStateManager {
     }
 
     /**
-     * Closes any crafting screen a player has open after the recipe set changes.
-     *
-     * <p>An open crafting menu can hold a recipe of its own. FastWorkbench caches the matched recipe on the
-     * menu's result container and skips looking it up again while the grid's contents are unchanged, so a
-     * recipe deleted here kept crafting from that cached object — items consumed, result given — even
-     * though the server's recipe manager no longer had it. Nothing we do to the recipe set can reach that
-     * cache; ending the menu is what clears it. Our own editor is left open, since saving from it must not
-     * close it.
+     * Clears session-scoped caches when a server stops (so singleplayer world switches start clean).
      */
-    private void closeStaleCraftingMenus(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (player.containerMenu != player.inventoryMenu
-                    && !(player.containerMenu instanceof org.mateof24.sce.menu.RecipeEditorMenu)) {
-                SceDebug.log(SceDebug.Category.EDIT, "Closing {}'s open {} so a cached recipe cannot outlive the change",
-                        player.getGameProfile().getName(), player.containerMenu.getClass().getSimpleName());
-                player.closeContainer();
-            }
-        }
-    }
-
-    /** Clears session-scoped caches when a server stops (so singleplayer world switches start clean). */
     public void onServerStopped() {
         rawJsonCache.clear();
         state = null; // re-read from the global config on next use

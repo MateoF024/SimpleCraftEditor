@@ -9,7 +9,6 @@ import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -134,16 +133,53 @@ public final class RecipeStateManager {
      */
     public String findRecipe(MinecraftServer server, ResourceLocation id) {
         RecipeManager manager = server.getRecipeManager();
-        boolean inManager = manager.byKey(id).isPresent();
         RecipeState s = state();
         StringBuilder sb = new StringBuilder("Recipe '" + id + "':");
-        sb.append("\n  live manager (server byName): ").append(inManager ? "PRESENT — the server can craft it" : "absent");
+
+        // The manager keeps two structures that can disagree: byKey reads the byName map, while crafting
+        // and getRecipes read the by-type map. See the 1.20.1 mirror.
+        boolean inByName = manager.byKey(id).isPresent();
+        RecipeHolder<?> inByType = null;
+        for (RecipeHolder<?> holder : manager.getRecipes()) {
+            if (holder.id().equals(id)) {
+                inByType = holder;
+                break;
+            }
+        }
+        sb.append("\n  byName (byKey): ").append(inByName ? "PRESENT" : "absent");
+        sb.append("\n  by-type set (what crafting reads): ").append(inByType != null ? "PRESENT" : "absent");
+        if (inByName != (inByType != null)) {
+            sb.append("\n  *** THE TWO DISAGREE — that is the bug ***");
+        }
+
         sb.append("\n  our generated set: ").append(s.isGenerated(id) ? "yes" : "no")
                 .append(s.isGeneratedDisabled(id) ? " (toggled off)" : "");
         sb.append("\n  our disabled set: ").append(s.isDisabled(id) ? "yes" : "no");
         sb.append("\n  raw source cache (datapack): ").append(rawJsonCache.containsKey(id) ? "yes" : "no");
-        manager.byKey(id).ifPresent(r ->
-                sb.append("\n  result item: ").append(r.value().getResultItem(server.registryAccess())));
+
+        // A ghost craft may be another recipe making the same item, so name every one that does.
+        RecipeHolder<?> known = inByType != null ? inByType : manager.byKey(id).orElse(null);
+        if (known != null) {
+            ItemStack result = known.value().getResultItem(server.registryAccess());
+            sb.append("\n  result item: ").append(result);
+            sb.append("\n  other live recipes producing the same item:");
+            int others = 0;
+            for (RecipeHolder<?> holder : manager.getRecipes()) {
+                if (holder.id().equals(id)) {
+                    continue;
+                }
+                ItemStack out = holder.value().getResultItem(server.registryAccess());
+                if (!out.isEmpty() && ItemStack.isSameItem(out, result)) {
+                    sb.append("\n    - ").append(holder.id()).append(" (").append(holder.value().getType()).append(')');
+                    others++;
+                }
+            }
+            if (others == 0) {
+                sb.append(" none");
+            }
+        }
+        sb.append("\n  live totals: by-type ").append(manager.getRecipes().size())
+                .append(", ids ").append(manager.getRecipeIds().count());
         return sb.toString();
     }
 
@@ -316,13 +352,11 @@ public final class RecipeStateManager {
         // recipes on the live manager, so create/disable/delete take effect cleanly under mods that own
         // recipe loading, and every recipe viewer refreshes with the reload.
         SceDebug.log(SceDebug.Category.EDIT, "reapplyAndSync: reloading datapacks to apply recipe state");
-        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() ->
-                server.execute(() -> {
-                    closeStaleCraftingMenus(server);
-                    if (changeListener != null) {
-                        changeListener.accept(server);
-                    }
-                }));
+        server.reloadResources(server.getPackRepository().getSelectedIds()).thenRun(() -> {
+            if (changeListener != null) {
+                changeListener.accept(server);
+            }
+        });
     }
 
     /** Decodes recipe JSON into a holder with the registry-aware codec; throws if the JSON is invalid. */
@@ -353,23 +387,6 @@ public final class RecipeStateManager {
         json.addProperty("cookingtime", cooking.defaultTime);
         SimpleCraftEditor.LOGGER.info("Gave recipe '{}' the default cooking time of {} ticks; it had none",
                 id, cooking.defaultTime);
-    }
-
-    /**
-     * Closes any crafting screen a player has open after the recipe set changes. See the 1.20.1 mirror:
-     * FastWorkbench caches the matched recipe on the menu's result container and skips re-checking it while
-     * the grid is unchanged, so a deleted recipe kept crafting from that cached object. Ending the menu is
-     * what clears it; our own editor is left open so saving from it does not close it.
-     */
-    private void closeStaleCraftingMenus(MinecraftServer server) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (player.containerMenu != player.inventoryMenu
-                    && !(player.containerMenu instanceof org.mateof24.sce.menu.RecipeEditorMenu)) {
-                SceDebug.log(SceDebug.Category.EDIT, "Closing {}'s open {} so a cached recipe cannot outlive the change",
-                        player.getGameProfile().getName(), player.containerMenu.getClass().getSimpleName());
-                player.closeContainer();
-            }
-        }
     }
 
     /** Clears session-scoped caches when a server stops (so singleplayer world switches start clean). */
