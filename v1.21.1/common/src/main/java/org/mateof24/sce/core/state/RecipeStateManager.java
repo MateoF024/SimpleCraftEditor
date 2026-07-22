@@ -57,6 +57,12 @@ public final class RecipeStateManager {
     /** The pack's recipes without ours, worked out once per load and reused by every edit after it. */
     private List<RecipeHolder<?>> pureBase = List.of();
     private boolean pureBaseKnown;
+    /**
+     * The registries the recipe codec needs to resolve items and tags. Taken from the server rather than
+     * captured during the recipe load: the load hook runs at the head of the load and does no parsing, so
+     * it has nothing to capture, and a field filled in only by some other path is a field that is
+     * sometimes null. A server's registries do not change while it runs, so reading them per call is free.
+     */
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
 
@@ -281,6 +287,7 @@ public final class RecipeStateManager {
     }
 
     public boolean saveGenerated(MinecraftServer server, ResourceLocation id, JsonObject json) {
+        useRegistries(server);
         SceDebug.dump(SceDebug.Category.EDIT, () -> "saveGenerated '" + id + "': " + json);
         String rejection = rejectionReason(json);
         if (rejection != null) {
@@ -350,6 +357,7 @@ public final class RecipeStateManager {
 
     /** Result stack of a generated recipe from its stored JSON (works even while it is toggled off). */
     public ItemStack generatedResultOf(MinecraftServer server, ResourceLocation id) {
+        useRegistries(server);
         JsonObject json = state().generated().get(id);
         if (json == null) {
             return ItemStack.EMPTY;
@@ -436,6 +444,7 @@ public final class RecipeStateManager {
      * reload datapacks — see the 1.20.1 mirror.
      */
     private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
+        useRegistries(server);
         RecipeState s = state();
         List<RecipeHolder<?>> base = pureBase(manager);
         // Keyed by id rather than a plain list: replaceRecipes throws on a duplicate id and, because it
@@ -593,8 +602,16 @@ public final class RecipeStateManager {
         }
     }
 
+    /** Remembers the registries to decode recipes with. Called wherever a server is in hand. */
+    private void useRegistries(MinecraftServer server) {
+        registries = server.registryAccess();
+    }
+
     /** Decodes recipe JSON into a holder with the registry-aware codec; throws if the JSON is invalid. */
     private RecipeHolder<?> deserialize(ResourceLocation id, JsonObject json) {
+        if (registries == null) {
+            throw new IllegalStateException("the server's registries are not available yet");
+        }
         RegistryOps<JsonElement> ops = registries.createSerializationContext(JsonOps.INSTANCE);
         Recipe<?> recipe = Recipe.CODEC.parse(ops, json).getOrThrow(JsonParseException::new);
         return new RecipeHolder<>(id, recipe);

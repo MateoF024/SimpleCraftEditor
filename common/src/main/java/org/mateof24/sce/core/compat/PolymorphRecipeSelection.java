@@ -4,7 +4,6 @@ import dev.architectury.platform.Platform;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.crafting.Recipe;
 import org.mateof24.sce.core.SceDebug;
 
 import java.lang.reflect.Method;
@@ -14,11 +13,10 @@ import java.util.Optional;
  * Forgets the recipe Polymorph has remembered for each player, after the recipe set has changed.
  *
  * <p>Polymorph lets a player pick which of several recipes an ingredient layout should produce, and
- * remembers that choice on the player as the {@code Recipe} object itself. Before using it again it
- * checks only that the object still has the right type and still matches what is in the grid — never
- * that the recipe still exists. Deleting a recipe therefore does not stop it being crafted: the game no
- * longer has it, but the player is still holding one, and it keeps working until they log out. Turning a
- * recipe off is unaffected, which is why only deletion ever looked broken.
+ * remembers that choice as the recipe itself. Before using it again it checks only that it still matches
+ * what is in the grid — never that the recipe still exists. Deleting a recipe therefore does not stop it
+ * being crafted: the game no longer has it, but the player is still holding one, and it keeps working
+ * until they log out. Turning a recipe off is unaffected, which is why only deletion looked broken.
  *
  * <p>Unlike the cache clearing in the state manager, this names a mod, because there is nothing generic
  * left to aim at: the reference lives on a capability of the player, not on the recipe manager, and only
@@ -26,17 +24,23 @@ import java.util.Optional;
  * reflection and only when Polymorph is present, which keeps it off the build entirely and makes it
  * impossible for it to affect anyone who does not have the mod.
  *
- * <p>Clearing the choice is enough and is what Polymorph itself does with an invalid one: with nothing
- * remembered, the shortcut is skipped and the recipe list is rebuilt from the recipe manager, which by
- * then holds the edited set.
+ * <p>That API has changed shape across Polymorph's own versions — the entry point was renamed and the
+ * player's data went from being returned in an {@link Optional} to being returned or null — so both
+ * shapes are accepted, and the one method that matters is found by name rather than by signature. When
+ * neither shape fits, this says so once and does nothing further; a deleted recipe then stays craftable
+ * for a player until they log out, which is the behaviour without the fix rather than a new fault.
  */
 public final class PolymorphRecipeSelection {
     private static final String MOD_ID = "polymorph";
 
-    /** Resolved once, then reused: null means unavailable, and we stop trying. */
-    private static Method getRecipeData;
+    /** The two entry points Polymorph has used, newest first. */
+    private static final String[] ENTRY_POINTS = {"getInstance", "common"};
+    /** How the player's data is reached, matched with the entry point above by position. */
+    private static final String[] ACCESSORS = {"getPlayerRecipeData", "getRecipeData"};
+
+    private static Object api;
+    private static Method accessor;
     private static Method setSelectedRecipe;
-    private static Object common;
     private static boolean resolved;
 
     private PolymorphRecipeSelection() {
@@ -50,9 +54,12 @@ public final class PolymorphRecipeSelection {
         int cleared = 0;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             try {
-                Object data = getRecipeData.invoke(common, player);
-                if (data instanceof Optional<?> optional && optional.isPresent()) {
-                    setSelectedRecipe.invoke(optional.get(), (Recipe<?>) null);
+                Object data = accessor.invoke(api, player);
+                if (data instanceof Optional<?> optional) {
+                    data = optional.orElse(null);
+                }
+                if (data != null) {
+                    setSelectedRecipe.invoke(data, new Object[]{null});
                     cleared++;
                 }
             } catch (Throwable ignored) {
@@ -68,24 +75,64 @@ public final class PolymorphRecipeSelection {
 
     private static boolean resolve() {
         if (resolved) {
-            return getRecipeData != null;
+            return accessor != null;
         }
         resolved = true;
         try {
-            Class<?> api = Class.forName("com.illusivesoulworks.polymorph.api.PolymorphApi");
-            common = api.getMethod("common").invoke(null);
-            // Looked up on the interface rather than the implementation: getRecipeData is overloaded for
-            // players, block entities and item stacks, and only the interface disambiguates it cleanly.
-            Class<?> commonApi = Class.forName("com.illusivesoulworks.polymorph.api.common.base.IPolymorphCommon");
-            getRecipeData = commonApi.getMethod("getRecipeData", Player.class);
-            Class<?> recipeData = Class.forName("com.illusivesoulworks.polymorph.api.common.capability.IRecipeData");
-            setSelectedRecipe = recipeData.getMethod("setSelectedRecipe", Recipe.class);
+            Class<?> apiClass = Class.forName("com.illusivesoulworks.polymorph.api.PolymorphApi");
+            for (int i = 0; i < ENTRY_POINTS.length && api == null; i++) {
+                try {
+                    Object candidate = apiClass.getMethod(ENTRY_POINTS[i]).invoke(null);
+                    if (candidate == null) {
+                        continue;
+                    }
+                    // Found by name and parameter rather than by declaring type: the accessor is
+                    // overloaded for players, block entities and item stacks, so the parameter is what
+                    // tells them apart, and scanning covers it wherever it is declared.
+                    accessor = accessorOn(candidate, ACCESSORS[i]);
+                    api = candidate;
+                } catch (ReflectiveOperationException next) {
+                    accessor = null;
+                }
+            }
+            if (accessor == null) {
+                throw new NoSuchMethodException("no known way to reach a player's recipe data");
+            }
+            accessor.setAccessible(true);
+            setSelectedRecipe = selectedRecipeSetter();
         } catch (Throwable e) {
-            getRecipeData = null;
+            api = null;
+            accessor = null;
             SceDebug.log(SceDebug.Category.COMPAT,
-                    "Polymorph is installed but its API is not the one expected ({}), so a deleted recipe may keep "
-                            + "crafting until the player logs out", e.toString());
+                    "Polymorph is installed but its API is not one this version knows ({}), so a deleted recipe "
+                            + "may keep crafting for a player until they log out", e.toString());
         }
-        return getRecipeData != null;
+        return accessor != null;
+    }
+
+    /** The method taking a single player, wherever on the object's type it happens to be declared. */
+    private static Method accessorOn(Object candidate, String name) throws ReflectiveOperationException {
+        for (Method method : candidate.getClass().getMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == 1
+                    && method.getParameterTypes()[0] == Player.class) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
+    /**
+     * Finds the setter by name. Its parameter is the recipe, which is a bare recipe on some versions and a
+     * wrapper around one on others, so matching on the name is what survives that difference.
+     */
+    private static Method selectedRecipeSetter() throws ReflectiveOperationException {
+        Class<?> recipeData = Class.forName("com.illusivesoulworks.polymorph.api.common.capability.IRecipeData");
+        for (Method method : recipeData.getMethods()) {
+            if (method.getName().equals("setSelectedRecipe") && method.getParameterCount() == 1) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        throw new NoSuchMethodException("IRecipeData.setSelectedRecipe");
     }
 }
