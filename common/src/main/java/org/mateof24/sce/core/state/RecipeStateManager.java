@@ -211,6 +211,11 @@ public final class RecipeStateManager {
 
     public boolean disable(MinecraftServer server, ResourceLocation id) {
         RecipeState s = state();
+        // The refusal lives here as well as at each entry point, so no route reaches a script-written
+        // recipe: the callers check first only to be able to explain themselves.
+        if (!isEditable(id)) {
+            return false;
+        }
         // A generated recipe is toggled off in place rather than added to the datapack-disabled set,
         // which would leave it both injected and "disabled" (the duplicate bug).
         if (s.isGenerated(id)) {
@@ -374,6 +379,10 @@ public final class RecipeStateManager {
         return rawJsonCache.containsKey(id);
     }
 
+    /**
+     * Copies a recipe under a new id. Cloning reads the source's JSON, so a script-written recipe cannot be
+     * cloned for the same reason it cannot be edited — there is no JSON to copy.
+     */
     public boolean cloneRecipe(MinecraftServer server, ResourceLocation source, ResourceLocation target) {
         JsonElement raw = rawJsonCache.get(source);
         if (raw == null || !raw.isJsonObject()) {

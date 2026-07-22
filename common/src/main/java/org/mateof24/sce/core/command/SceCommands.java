@@ -50,7 +50,7 @@ public final class SceCommands {
         dispatcher.register(Commands.literal("sce").requires(SceCommands::mayUse)
                 .then(Commands.literal("disable")
                         .then(Commands.argument("recipe", ResourceLocationArgument.id())
-                                .suggests(suggestExisting())
+                                .suggests(suggestEditable())
                                 .executes(SceCommands::disable)))
                 .then(Commands.literal("enable")
                         .then(Commands.argument("recipe", ResourceLocationArgument.id())
@@ -58,7 +58,7 @@ public final class SceCommands {
                                 .executes(SceCommands::enable)))
                 .then(Commands.literal("clone")
                         .then(Commands.argument("source", ResourceLocationArgument.id())
-                                .suggests(suggestExisting())
+                                .suggests(suggestEditable())
                                 .then(Commands.argument("target", ResourceLocationArgument.id())
                                         .executes(SceCommands::cloneRecipe))))
                 .then(Commands.literal("delete")
@@ -146,6 +146,12 @@ public final class SceCommands {
 
     private static int disable(CommandContext<CommandSourceStack> context) {
         ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
+        // Checked here rather than left to the engine's own refusal so the reason can be given: the
+        // command would otherwise report the same failure as a recipe that simply does not exist.
+        if (!RecipeStateManager.INSTANCE.isEditable(id)) {
+            context.getSource().sendFailure(Component.translatable("sce.msg.not_editable", id.toString()));
+            return 0;
+        }
         boolean ok = RecipeStateManager.INSTANCE.disable(context.getSource().getServer(), id);
         if (ok) {
             context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.disabled", id.toString()), true);
@@ -208,9 +214,20 @@ public final class SceCommands {
         return ids.size();
     }
 
+    /** Every loaded recipe, for the diagnostics, which have to be able to look at anything. */
     private static SuggestionProvider<CommandSourceStack> suggestExisting() {
         return (context, builder) -> SharedSuggestionProvider.suggestResource(
                 context.getSource().getServer().getRecipeManager().getRecipeIds(), builder);
+    }
+
+    /**
+     * Only the recipes that can actually be changed. Offering a script-written one would be inviting
+     * exactly the thing that is refused a keystroke later.
+     */
+    private static SuggestionProvider<CommandSourceStack> suggestEditable() {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                context.getSource().getServer().getRecipeManager().getRecipeIds()
+                        .filter(RecipeStateManager.INSTANCE::isEditable), builder);
     }
 
     private static SuggestionProvider<CommandSourceStack> suggestDisabled() {
