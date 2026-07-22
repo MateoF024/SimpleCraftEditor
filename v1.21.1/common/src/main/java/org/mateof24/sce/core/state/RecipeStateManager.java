@@ -127,6 +127,25 @@ public final class RecipeStateManager {
         return state;
     }
 
+    /**
+     * Reports where a given recipe id stands right now — see the 1.20.1 mirror. Driven by
+     * {@code /sce debug find}, to pin a recipe that keeps crafting after being deleted.
+     */
+    public String findRecipe(MinecraftServer server, ResourceLocation id) {
+        RecipeManager manager = server.getRecipeManager();
+        boolean inManager = manager.byKey(id).isPresent();
+        RecipeState s = state();
+        StringBuilder sb = new StringBuilder("Recipe '" + id + "':");
+        sb.append("\n  live manager (server byName): ").append(inManager ? "PRESENT — the server can craft it" : "absent");
+        sb.append("\n  our generated set: ").append(s.isGenerated(id) ? "yes" : "no")
+                .append(s.isGeneratedDisabled(id) ? " (toggled off)" : "");
+        sb.append("\n  our disabled set: ").append(s.isDisabled(id) ? "yes" : "no");
+        sb.append("\n  raw source cache (datapack): ").append(rawJsonCache.containsKey(id) ? "yes" : "no");
+        manager.byKey(id).ifPresent(r ->
+                sb.append("\n  result item: ").append(r.value().getResultItem(server.registryAccess())));
+        return sb.toString();
+    }
+
     // ------------------------------------------------------------------ runtime mutations (server thread)
 
     public boolean disable(MinecraftServer server, ResourceLocation id) {

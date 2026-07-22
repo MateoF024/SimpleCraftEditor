@@ -82,6 +82,18 @@ public final class SceCommands {
         debug.then(Commands.literal("status").executes(SceCommands::debugStatus));
         // Reports, per authored recipe, whether it reached the live recipe manager — the direct answer to
         // "the editor saved it but the game does not have it", which is what a heavy modpack causes.
+        debug.then(Commands.literal("find")
+                .then(Commands.argument("recipe", ResourceLocationArgument.id())
+                        .suggests(suggestExisting())
+                        .executes(context -> {
+                            ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
+                            String report = RecipeStateManager.INSTANCE.findRecipe(context.getSource().getServer(), id);
+                            for (String line : report.split("\n")) {
+                                context.getSource().sendSuccess(() -> Component.literal(line), false);
+                            }
+                            org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
+                            return 1;
+                        })));
         debug.then(Commands.literal("verify").executes(context -> {
             String report = RecipeStateManager.INSTANCE.verifyGeneratedInManager(context.getSource().getServer());
             for (String line : report.split("\n")) {
