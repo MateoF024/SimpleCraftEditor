@@ -63,6 +63,8 @@ public final class RecipeStateManager {
      */
     public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
         SceDebug.reportEnvironment();
+        SceDebug.log(SceDebug.Category.RELOAD, "beforeRecipeLoad ENTER: {} entries in a {}",
+                map.size(), map.getClass().getName());
         rawJsonCache.clear();
         rawJsonCache.putAll(map);
         baseCaptured = false;
@@ -75,16 +77,48 @@ public final class RecipeStateManager {
             }
         }
         int added = 0;
+        int verified = 0;
         for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
             if (s.isGeneratedDisabled(entry.getKey())) {
                 continue;
             }
-            map.put(entry.getKey(), entry.getValue());
-            added++;
+            try {
+                map.put(entry.getKey(), entry.getValue());
+                added++;
+                if (entry.getValue().equals(map.get(entry.getKey()))) {
+                    verified++;
+                } else {
+                    SceDebug.log(SceDebug.Category.RELOAD,
+                            "  WARNING: '{}' did not survive being put into the recipe map", entry.getKey());
+                }
+            } catch (Exception e) {
+                SceDebug.log(SceDebug.Category.RELOAD,
+                        "  ERROR putting '{}' into the recipe map: {}", entry.getKey(), e.toString());
+            }
         }
         SceDebug.log(SceDebug.Category.RELOAD,
-                "beforeRecipeLoad: {} sources, removed {} disabled, added {} generated",
-                rawJsonCache.size(), removed, added);
+                "beforeRecipeLoad DONE: {} sources, removed {} disabled, added {} generated ({} verified in map)",
+                rawJsonCache.size(), removed, added, verified);
+    }
+
+    /**
+     * Reports, for each generated recipe, whether it actually reached the live recipe manager. Diagnostic
+     * only, driven by {@code /sce debug verify}.
+     */
+    public String verifyGeneratedInManager(MinecraftServer server) {
+        RecipeManager manager = server.getRecipeManager();
+        StringBuilder sb = new StringBuilder("Generated recipes vs live manager (" + manager.getRecipes().size() + " live):");
+        RecipeState s = state();
+        if (s.generated().isEmpty()) {
+            sb.append("\n  (none authored)");
+        }
+        for (ResourceLocation id : s.generated().keySet()) {
+            boolean present = manager.byKey(id).isPresent();
+            boolean off = s.isGeneratedDisabled(id);
+            sb.append("\n  ").append(present ? "PRESENT" : "MISSING")
+                    .append(off ? " (toggled off)" : "").append(" - ").append(id);
+        }
+        return sb.toString();
     }
 
     public RecipeState state() {

@@ -221,8 +221,13 @@ public final class SceDebug {
         if (!isOn(Category.RELOAD)) {
             return;
         }
+        // Every mod known to touch the recipe manager or its loading. A recipe going missing in a pack is
+        // rarely just one mod's doing; this names all the suspects up front so a session never has to guess
+        // which one to blame. Extend the list whenever a new recipe-stage mod turns up.
         StringBuilder sb = new StringBuilder("Recipe-relevant mods present:");
-        for (String id : new String[]{"kubejs", "crafttweaker", "create", "jei", "emi", "architectury"}) {
+        for (String id : new String[]{
+                "kubejs", "crafttweaker", "almostunified", "item_obliterator", "polymorph", "modernfix",
+                "fastbench", "blueprint", "create", "jei", "emi", "architectury"}) {
             if (Platform.isModLoaded(id)) {
                 Mod mod = Platform.getMod(id);
                 sb.append("\n  - ").append(id).append(' ').append(mod != null ? mod.getVersion() : "?");

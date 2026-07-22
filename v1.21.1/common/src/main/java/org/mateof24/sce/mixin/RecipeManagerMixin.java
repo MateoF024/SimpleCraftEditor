@@ -27,7 +27,7 @@ import java.util.Map;
  * editor to load from. Recipes with no source here — Create's runtime-generated ones, anything built in
  * code — are the reconstruction case, handled elsewhere.
  */
-@Mixin(value = RecipeManager.class, priority = 1500)
+@Mixin(value = RecipeManager.class, priority = 900)
 public abstract class RecipeManagerMixin {
     @Inject(
             method = "apply(Ljava/util/Map;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V",

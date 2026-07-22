@@ -80,6 +80,16 @@ public final class SceCommands {
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildDebug() {
         com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug");
         debug.then(Commands.literal("status").executes(SceCommands::debugStatus));
+        // Reports, per authored recipe, whether it reached the live recipe manager — the direct answer to
+        // "the editor saved it but the game does not have it", which is what a heavy modpack causes.
+        debug.then(Commands.literal("verify").executes(context -> {
+            String report = RecipeStateManager.INSTANCE.verifyGeneratedInManager(context.getSource().getServer());
+            for (String line : report.split("\n")) {
+                context.getSource().sendSuccess(() -> Component.literal(line), false);
+            }
+            org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
+            return 1;
+        }));
         debug.then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
                 .executes(context -> setDebug(context, null)));
         for (SceDebug.Category category : SceDebug.Category.values()) {
