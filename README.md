@@ -23,6 +23,8 @@ An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existin
 *   **Live and synced** — edits apply instantly for everyone on the server and persist across restarts. Run `/reload` to refresh what JEI and EMI show.
 *   **Operator-only** — only operators (or single-player with cheats) can edit, so regular players can't tamper with the pack.
 
+> **Note:** recipes created by script mods can't be edited. Those scripts rewrite their recipes every time the pack loads, so any change made here would be undone — the editor says so rather than letting you make one that won't last. Change the script instead. Recipes from datapacks, from the game and from other mods work as normal.
+
 ***
 
 ## 🎮 How to Use
