@@ -1,5 +1,12 @@
 package org.mateof24.sce;
 
+import dev.architectury.event.events.common.LifecycleEvent;
+import org.mateof24.sce.core.SceDebug;
+import org.mateof24.sce.core.command.SceCommands;
+import org.mateof24.sce.core.state.RecipeStateManager;
+import org.mateof24.sce.net.SceNetworking;
+import org.mateof24.sce.registry.SceMenus;
+import org.mateof24.sce.registry.SceRecipeSerializers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +18,13 @@ public final class SimpleCraftEditor {
     }
 
     public static void init() {
+        // Read the debug switch first, so anything the rest of init logs is already instrumented.
+        SceDebug.loadStartup();
+        SceMenus.init();
+        SceRecipeSerializers.init();
+        SceNetworking.init();
+        SceCommands.register();
+        LifecycleEvent.SERVER_STOPPED.register(server -> RecipeStateManager.INSTANCE.onServerStopped());
         LOGGER.info("Initializing Simple Craft Editor common.");
     }
 }
