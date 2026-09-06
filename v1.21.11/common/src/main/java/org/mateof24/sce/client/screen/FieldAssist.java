@@ -58,8 +58,10 @@ public final class FieldAssist {
     private static final int TEXT_COLOR = 0xFFAAAAAA;
     private static final int SELECTED_COLOR = 0xFFFFFF00;
 
-    private static final int INVALID_TEXT = 0xFF5555;
-    private static final int VALID_TEXT = 0xE0E0E0;
+    // Written in full ARGB, alpha included: from 1.21.11 a colour with no alpha draws nothing at all, and
+    // these replace the field's own opaque default on every frame.
+    private static final int INVALID_TEXT = 0xFFFF5555;
+    private static final int VALID_TEXT = 0xFFE0E0E0;
 
     private record Field(EditBox box, Predicate<String> valid, Source source) {
     }

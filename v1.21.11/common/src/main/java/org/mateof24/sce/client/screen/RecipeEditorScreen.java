@@ -939,7 +939,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 graphics.fill(x, y, x + 16, y + 16, 0x6020A020);
             }
             if (create && outputChance[i] < 1.0f) {
-                graphics.drawString(font, "%", x + 1, y + 1, 0xB07000, false);
+                graphics.drawString(font, "%", x + 1, y + 1, 0xFFB07000, false);
             }
         }
         if (layout.seasoningCount > 0) {
@@ -990,14 +990,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.renderItemDecorations(font, stack, x, y);
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
-            graphics.drawString(font, "#", x + 1, y + 1, 0x55FF55, false);
+            graphics.drawString(font, "#", x + 1, y + 1, 0xFF55FF55, false);
         } else if (value.isFluid()) {
             // A fluid is a quantity rather than an item, so mark the slot and show how much it is.
-            graphics.drawString(font, value.isFluidTag() ? "#" : "~", x + 1, y + 1, 0x55AAFF, false);
+            graphics.drawString(font, value.isFluidTag() ? "#" : "~", x + 1, y + 1, 0xFF55AAFF, false);
             graphics.pose().pushMatrix();
             graphics.pose().translate(x, y + 10);
             graphics.pose().scale(0.5F, 0.5F);
-            graphics.drawString(font, shortAmount(value.amount()), 0, 0, 0x9CDCFF, false);
+            graphics.drawString(font, shortAmount(value.amount()), 0, 0, 0xFF9CDCFF, false);
             graphics.pose().popMatrix();
         }
     }
@@ -1040,34 +1040,32 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             drawRightAligned(graphics, Component.translatable("sce.label.time"), layout.sideX - 4, layout.sideTimeY + 4);
         }
         if (create) {
-            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0x404040, false);
-            graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0x404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0xFF404040, false);
+            graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0xFF404040, false);
         }
         if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
-            // The captions for the two rule buttons, in the line the layout keeps free above them. White
-            // with a shadow rather than the dark grey the other labels use: these sit against the panel
-            // and against the button below them, and only that pair stays readable on both.
+            // The captions for the two rule buttons, in the line the layout keeps free above them.
             // Left-aligned on their button and in the same ink as every other label on the panel: white
-            // read as a heading shouting over the rest of the screen.
+            // with a shadow read as a heading shouting over the rest of the screen.
             int y = layout.ruleRowY - EditorLayout.LABEL_LINE + 1;
-            graphics.drawString(font, Component.translatable("sce.label.match_data"), 8, y, 0x000000, false);
-            graphics.drawString(font, Component.translatable("sce.label.carry"), 122, y, 0x000000, false);
+            graphics.drawString(font, Component.translatable("sce.label.match_data"), 8, y, 0xFF000000, false);
+            graphics.drawString(font, Component.translatable("sce.label.carry"), 122, y, 0xFF000000, false);
         }
         if (RecipeModes.isCookingPot(mode) && layout.ruleRowY >= 0) {
             graphics.drawString(font, Component.translatable("sce.label.pot_category"), 8,
-                    layout.ruleRowY - EditorLayout.LABEL_LINE + 1, 0x000000, false);
+                    layout.ruleRowY - EditorLayout.LABEL_LINE + 1, 0xFF000000, false);
         }
         if (layout.seasoningCount > 0) {
             // A pixel higher than a caption normally sits, and flush with the frames rather than with
             // the items inside them: otherwise the g of "Seasoning" lands on the top edge of a slot.
             graphics.drawString(font, Component.translatable("sce.label.pot_seasoning"),
-                    layout.seasoningX - 1, layout.seasoningY - EditorLayout.LABEL_LINE, 0x000000, false);
+                    layout.seasoningX - 1, layout.seasoningY - EditorLayout.LABEL_LINE, 0xFF000000, false);
         }
         status.drawCentered(graphics, font, imageWidth / 2, imageHeight + 4);
     }
 
     private void drawRightAligned(GuiGraphics graphics, Component text, int right, int y) {
-        graphics.drawString(font, text, right - font.width(text), y, 0x404040, false);
+        graphics.drawString(font, text, right - font.width(text), y, 0xFF404040, false);
     }
 
     @Override

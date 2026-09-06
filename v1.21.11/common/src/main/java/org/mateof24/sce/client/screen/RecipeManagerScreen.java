@@ -139,13 +139,13 @@ public class RecipeManagerScreen extends BaseSceScreen {
         // must be drawn after it, or the second blur it applies would smear them (they're a plain Screen's
         // foreground, unlike a container screen whose labels draw inside its own render).
         super.render(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFF);
+        graphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFFFF);
         status.drawCentered(graphics, font, width / 2, height - 44);
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
         if (rows.isEmpty()) {
             graphics.drawCenteredString(font, Component.translatable("sce.manager.empty"),
-                    width / 2, LIST_TOP + 10, 0xA0A0A0);
+                    width / 2, LIST_TOP + 10, 0xFFA0A0A0);
         }
         MutableComponent hoverTooltip = null;
         for (int i = 0; i < maxRows && scroll + i < rows.size(); i++) {
@@ -156,17 +156,17 @@ public class RecipeManagerScreen extends BaseSceScreen {
             int color;
             MutableComponent label = Component.literal(row.id().toString());
             if (row.disabled()) {
-                color = 0xFF5555; // disabled datapack recipe -> red
+                color = 0xFFFF5555; // disabled datapack recipe -> red
                 if (row.flag()) {
                     label.append(" ").append(Component.translatable("sce.manager.unresolved"));
                 }
             } else if (row.genDisabled()) {
-                color = 0xA0A0A0; // generated recipe toggled off -> gray
+                color = 0xFFA0A0A0; // generated recipe toggled off -> gray
                 label.append(" ").append(Component.translatable("sce.manager.disabled_suffix"));
             } else if (row.flag()) {
-                color = 0xFFFF55; // edit of an existing recipe -> yellow
+                color = 0xFFFFFF55; // edit of an existing recipe -> yellow
             } else {
-                color = 0x55FF55; // brand new recipe -> green
+                color = 0xFF55FF55; // brand new recipe -> green
             }
             // Clip the id to the space before the buttons so a long id never runs under them; the full id
             // is shown as a tooltip on hover instead.

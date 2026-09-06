@@ -92,7 +92,7 @@ public class RawRecipeScreen extends Screen {
         // Draw the title and status after super.render: it renders the blurred background itself, so drawing
         // our foreground before it would get smeared by that blur.
         super.render(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
+        graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFFFF);
         status.drawCentered(graphics, font, width / 2, height - 58);
     }
 

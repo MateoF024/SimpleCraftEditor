@@ -1040,11 +1040,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0x404040, false);
         }
         if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
-            // The captions for the two rule buttons, in the line the layout keeps free above them. White
-            // with a shadow rather than the dark grey the other labels use: these sit against the panel
-            // and against the button below them, and only that pair stays readable on both.
+            // The captions for the two rule buttons, in the line the layout keeps free above them.
             // Left-aligned on their button and in the same ink as every other label on the panel: white
-            // read as a heading shouting over the rest of the screen.
+            // with a shadow read as a heading shouting over the rest of the screen.
             int y = layout.ruleRowY - EditorLayout.LABEL_LINE + 1;
             graphics.drawString(font, Component.translatable("sce.label.match_data"), 8, y, 0x000000, false);
             graphics.drawString(font, Component.translatable("sce.label.carry"), 122, y, 0x000000, false);

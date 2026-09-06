@@ -187,7 +187,7 @@ public class SeasoningScreen extends Screen {
         fields.update(mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        graphics.drawCenteredString(font, title, left + PANEL_WIDTH / 2, top + 12, 0xFFFFFF);
+        graphics.drawCenteredString(font, title, left + PANEL_WIDTH / 2, top + 12, 0xFFFFFFFF);
         List<ItemStack> preview = preview();
         for (int i = 0; i < CookingPot.SEASONING_SLOTS; i++) {
             int x = slotX(i);
@@ -198,9 +198,9 @@ public class SeasoningScreen extends Screen {
             }
         }
         graphics.drawString(font, Component.translatable("sce.label.seasoning_tag"),
-                left + 10, tagRowY() - 10, 0xFFFFFF, true);
+                left + 10, tagRowY() - 10, 0xFFFFFFFF, true);
         graphics.drawString(font, Component.translatable("sce.label.absorbs"),
-                left + 10, absorbRowY(0) - 10, 0xFFFFFF, true);
+                left + 10, absorbRowY(0) - 10, 0xFFFFFFFF, true);
 
         if (!CookingPot.seasoningIsCoherent(tag, absorbs)) {
             // Neither half fails loudly on its own, so this is the only place the author will hear it.
@@ -208,7 +208,7 @@ public class SeasoningScreen extends Screen {
                     font.split(Component.translatable("sce.pot.seasoning_half_done"), PANEL_WIDTH - 20);
             int y = warningY() + Math.max(0, WARNING_LINES - lines.size()) * LINE / 2;
             for (FormattedCharSequence line : lines) {
-                graphics.drawCenteredString(font, line, left + PANEL_WIDTH / 2, y, 0xFFAA00);
+                graphics.drawCenteredString(font, line, left + PANEL_WIDTH / 2, y, 0xFFFFAA00);
                 y += LINE;
             }
         }

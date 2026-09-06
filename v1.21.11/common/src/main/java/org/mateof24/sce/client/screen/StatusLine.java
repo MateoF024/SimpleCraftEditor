@@ -28,7 +28,7 @@ public final class StatusLine {
     private static final long HOLD = 3000L;
     private static final long FADE_OUT = 600L;
     private static final long LIFETIME = FADE_IN + HOLD + FADE_OUT;
-    /** Below this, the font would ignore the alpha entirely and draw the text solid. */
+    /** The ramp stops here rather than at zero: a colour with no alpha is not drawn at all. */
     private static final int MIN_ALPHA = 4;
 
     /** The colour these lines have always been drawn in. */
