@@ -27,6 +27,18 @@ public final class RecipeModes {
      */
     private record Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType,
                         String labelKey, int inputs, int outputs, String requiredMod) {
+        Mode {
+            // A row that names another mod's recipe type needs that mod, and the type already says which
+            // one: create:mixing is Create's. Taking it from there rather than writing it a second time
+            // per row is what keeps the two from disagreeing — they did, and mechanical crafting and
+            // sequenced assembly were offered on a game with no Create in it.
+            if (requiredMod == null && createType != null) {
+                int colon = createType.indexOf(':');
+                requiredMod = colon > 0 ? createType.substring(0, colon) : null;
+            }
+        }
+
+        /** A row that needs nothing installed, or one that names a type and takes its gate from it. */
         Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType, String labelKey,
              int inputs, int outputs) {
             this(kind, cooking, createType, labelKey, inputs, outputs, null);
@@ -82,7 +94,7 @@ public final class RecipeModes {
 
     private static Mode create(String createType, String labelKey) {
         return new Mode(RecipeDraft.Kind.CREATE_PROCESSING, null, createType, labelKey,
-                CREATE_INPUTS, CREATE_OUTPUTS, "create");
+                CREATE_INPUTS, CREATE_OUTPUTS);
     }
 
     public static RecipeDraft.Kind kind(int mode) {
