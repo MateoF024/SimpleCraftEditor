@@ -1,0 +1,11 @@
+architectury {
+    common(['fabric', 'neoforge'])
+}
+
+dependencies {
+    // Fabric Loader is used here only for the @Environment annotations, which get remapped
+    // to the correct annotations on each platform. Do NOT use other classes from Fabric Loader.
+    implementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
+
+    implementation "dev.architectury:architectury:${rootProject.architectury_api_v2612}"
+}

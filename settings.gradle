@@ -22,7 +22,10 @@ def minecraftVer = gradle.startParameter.projectProperties.containsKey('minecraf
 //   1.20.1  -> Forge + Fabric, kept at the repository root (legacy Architectury 9.x / Java 17).
 //   1.21.1  -> NeoForge + Fabric, lives in v1.21.1/ (Architectury 13.x / Java 21).
 def treeByVersion = [
-        '1.21.1': 'v1.21.1',
+        '1.21.1' : 'v1.21.1',
+        '1.21.11': 'v1.21.11',
+        '26.1.2' : 'v26.1.2',
+        '26.2'   : 'v26.2',
 ]
 
 if (minecraftVer.startsWith("1.20")) {

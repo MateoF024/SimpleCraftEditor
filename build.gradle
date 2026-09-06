@@ -1,5 +1,7 @@
 plugins {
     id 'dev.architectury.loom' version '1.17.491' apply false
+    // Minecraft stopped shipping obfuscated at 26.1, and Loom has a variant for that.
+    id 'dev.architectury.loom-no-remap' version '1.17-SNAPSHOT' apply false
     id 'architectury-plugin' version '3.5-SNAPSHOT'
     id 'com.gradleup.shadow' version '9.4.3' apply false
 }
@@ -13,10 +15,17 @@ allprojects {
     version = rootProject.mod_version
 }
 
-def isLegacy = rootProject.minecraft_version.startsWith("1.20")
+// Java level per Minecraft generation: 1.20.x -> 17, 1.21.x -> 21, 26.x and newer -> 25.
+def javaRelease = rootProject.minecraft_version.startsWith("1.20") ? 17
+        : rootProject.minecraft_version.startsWith("1.21") ? 21
+        : 25
+
+// Everything before the 26.x naming scheme ships obfuscated and needs a mapping set. "1.20.1" and
+// "1.21.11" start with "1."; "26.1.2" and "26.2" do not.
+def obfuscated = rootProject.minecraft_version.startsWith("1.")
 
 subprojects {
-    apply plugin: 'dev.architectury.loom'
+    apply plugin: obfuscated ? 'dev.architectury.loom' : 'dev.architectury.loom-no-remap'
     apply plugin: 'architectury-plugin'
     apply plugin: 'maven-publish'
 
@@ -31,17 +40,21 @@ subprojects {
 
     dependencies {
         minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
-        mappings loom.officialMojangMappings()
+        // No mappings for 26.1 and newer: Mojang no longer publishes any, because there is nothing left
+        // to map.
+        if (obfuscated) {
+            mappings loom.officialMojangMappings()
+        }
     }
 
     java {
-        def javaVer = isLegacy ? JavaVersion.VERSION_17 : JavaVersion.VERSION_21
+        def javaVer = JavaVersion.toVersion(javaRelease)
         sourceCompatibility = javaVer
         targetCompatibility = javaVer
     }
 
     tasks.withType(JavaCompile).configureEach {
-        it.options.release = isLegacy ? 17 : 21
+        it.options.release = javaRelease
     }
 
     // Ship the license inside every jar. The mod is all-rights-reserved with specific permissions
