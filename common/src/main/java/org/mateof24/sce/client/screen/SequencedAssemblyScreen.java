@@ -13,6 +13,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.core.edit.IngredientValue;
+import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.core.edit.SequencedAssemblyCompiler;
@@ -47,7 +48,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private final FieldAssist fields = new FieldAssist();
 
     private String idValue;
-    private Component status = Component.empty();
+    private final StatusLine status = new StatusLine();
     private int scroll;
 
     public SequencedAssemblyScreen(ResourceLocation id, String json) {
@@ -59,7 +60,14 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private static RecipeDraft parse(ResourceLocation id, String json) {
         if (!json.isEmpty()) {
             try {
-                return SequencedAssemblyCompiler.fromJson(id, JsonParser.parseString(json).getAsJsonObject());
+                JsonObject object = JsonParser.parseString(json).getAsJsonObject();
+                RecipeDraft parsed = SequencedAssemblyCompiler.fromJson(id, object);
+                if (parsed != null) {
+                    // This screen compiles the recipe itself instead of going through RecipeCompiler,
+                    // so it has to keep the parts nobody models the same way the main editor does.
+                    RecipeCompiler.preserveFrom(parsed, object);
+                }
+                return parsed;
             } catch (Exception ignored) {
                 // fall through to a blank recipe rather than failing to open
             }
@@ -88,7 +96,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                 FieldAssist.Source.RECIPES);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b ->
                         SceNetworking.sendOpenEditor(idValue, -1))
-                .bounds(left + 256, ROW_ID, 54, 16).build());
+                .bounds(left + 256, ROW_ID, 54, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.load"))).build());
 
         textBox(left, ROW_PARTS, 130, idOf(draft.input(0)),
                 s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base", FieldAssist.id(), FieldAssist.Source.ITEMS);
@@ -107,7 +116,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             draft.sequence.add(blankStep());
             scroll = Math.max(0, draft.sequence.size() - visibleSteps());
             rebuildWidgets();
-        }).bounds(left + 210, STEPS_HEADER - 4, 100, 20).build());
+        }).bounds(left + 210, STEPS_HEADER - 4, 100, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.add_step"))).build());
 
         int visible = visibleSteps();
         scroll = Mth.clamp(scroll, 0, Math.max(0, draft.sequence.size() - visible));
@@ -130,7 +140,8 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save())
                 .bounds(left, height - 26, 100, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable())
-                .bounds(left + 105, height - 26, 100, 20).build());
+                .bounds(left + 105, height - 26, 100, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.disable"))).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
                 .bounds(left + 210, height - 26, 100, 20).build());
     }
@@ -204,31 +215,32 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private void save() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = Component.translatable("sce.status.invalid_id");
+            status.set(Component.translatable("sce.status.invalid_id"));
             return;
         }
         // Say what is missing instead of sending a recipe the server can only reject.
         if (draft.input(0).isEmpty() || draft.transitionalItem.isEmpty() || firstResult().item.isEmpty()) {
-            status = Component.translatable("sce.status.sequence_incomplete");
+            status.set(Component.translatable("sce.status.sequence_incomplete"));
             return;
         }
         if (draft.sequence.isEmpty()) {
-            status = Component.translatable("sce.status.sequence_no_steps");
+            status.set(Component.translatable("sce.status.sequence_no_steps"));
             return;
         }
         JsonObject json = SequencedAssemblyCompiler.toJson(draft);
+        RecipeCompiler.restoreInto(draft, json);
         SceNetworking.sendSave(id, json.toString());
-        status = Component.translatable("sce.status.saving", id.toString());
+        status.set(Component.translatable("sce.status.saving", id.toString()));
     }
 
     private void disable() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = Component.translatable("sce.status.invalid_id");
+            status.set(Component.translatable("sce.status.invalid_id"));
             return;
         }
         SceNetworking.sendSimple(SceNetworking.DISABLE, id);
-        status = Component.translatable("sce.status.requested_disable", id.toString());
+        status.set(Component.translatable("sce.status.requested_disable", id.toString()));
     }
 
     @Override
@@ -293,9 +305,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         // Before the widgets draw: what this decides is read by the fields as they render.
         fields.update(mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
-        if (!status.getString().isEmpty()) {
-            graphics.drawCenteredString(font, status, width / 2, height - 40, 0xE0E070);
-        }
+        status.drawCentered(graphics, font, width / 2, height - 40);
         fields.render(graphics, font);
     }
 
@@ -304,9 +314,20 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         graphics.drawString(font, Component.translatable(key), x, fieldY - 10, 0xFFFFFF, true);
     }
 
-    /** Called from the network layer with the server's verdict on a save request. */
+    /**
+     * Called from the network layer with the server's verdict on a save request.
+     *
+     * <p>A save that worked goes back to the manager and says so there: that is where the recipe just
+     * saved can be seen in the list, so the confirmation and the thing it confirms are on the same
+     * screen. A save that failed stays here, because the form that has to be fixed is here.
+     */
     public void onSaveResult(ResourceLocation id, boolean ok) {
-        status = Component.translatable(ok ? "sce.status.saved" : "sce.status.save_failed", id.toString());
+        if (ok) {
+            RecipeManagerScreen.showOnOpen(Component.translatable("sce.status.saved", id.toString()));
+            minecraft.setScreen(new RecipeManagerScreen());
+            return;
+        }
+        status.set(Component.translatable("sce.status.save_failed", id.toString()));
     }
 
     @Override

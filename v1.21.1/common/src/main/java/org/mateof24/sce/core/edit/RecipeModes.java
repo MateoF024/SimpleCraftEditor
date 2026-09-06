@@ -5,7 +5,8 @@ import dev.architectury.platform.Platform;
 /**
  * The selectable recipe types in the editor and the slot layout each one uses. Shared by the menu (which
  * builds the right slots server-side) and the screen (which labels the type button and compiles the draft).
- * Create processing types are only offered when Create is installed.
+ * A type belonging to a mod — Create's machines, Cobblemon's campfire pot — is only offered when that mod
+ * is installed.
  *
  * <p>Only types something can actually craft are listed. Create registers two more — {@code create:basin}
  * and {@code create:conversion} — that look like recipe types but are not: {@code BasinRecipe} is the
@@ -25,7 +26,11 @@ public final class RecipeModes {
      * of step with itself, which the six arrays this replaced could and did whenever a type was added.
      */
     private record Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType,
-                        String labelKey, int inputs, int outputs) {
+                        String labelKey, int inputs, int outputs, String requiredMod) {
+        Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType, String labelKey,
+             int inputs, int outputs) {
+            this(kind, cooking, createType, labelKey, inputs, outputs, null);
+        }
     }
 
     private static final int CREATE_INPUTS = 6;
@@ -60,7 +65,14 @@ public final class RecipeModes {
                     "sce.mode.create_mechanical_crafting", MECHANICAL_SLOTS, 1),
             // Sequenced assembly is edited on its own screen, not on the slot grid.
             new Mode(RecipeDraft.Kind.SEQUENCED_ASSEMBLY, null, SequencedAssemblyCompiler.TYPE,
-                    "sce.mode.create_sequenced_assembly", 1, 1)};
+                    "sce.mode.create_sequenced_assembly", 1, 1),
+
+            // Cobblemon's campfire pot. Both types are an ordinary grid with the pot's own fields around
+            // it, so they reuse the shaped and shapeless layout and differ only in what gets written.
+            new Mode(RecipeDraft.Kind.COOKING_POT_SHAPELESS, null, null,
+                    "sce.mode.cobblemon_cooking_pot_shapeless", 9, 1, CookingPot.MOD_ID),
+            new Mode(RecipeDraft.Kind.COOKING_POT, null, null,
+                    "sce.mode.cobblemon_cooking_pot", 9, 1, CookingPot.MOD_ID)};
 
     public static final int COUNT = MODES.length;
     private static final int FIRST_CREATE = 7;
@@ -70,7 +82,7 @@ public final class RecipeModes {
 
     private static Mode create(String createType, String labelKey) {
         return new Mode(RecipeDraft.Kind.CREATE_PROCESSING, null, createType, labelKey,
-                CREATE_INPUTS, CREATE_OUTPUTS);
+                CREATE_INPUTS, CREATE_OUTPUTS, "create");
     }
 
     public static RecipeDraft.Kind kind(int mode) {
@@ -109,6 +121,43 @@ public final class RecipeModes {
         return MODES[clamp(mode)].kind() == RecipeDraft.Kind.MECHANICAL_CRAFTING;
     }
 
+    /**
+     * The mode a recipe written from nothing starts in: a shapeless crafting recipe, which is the one
+     * shape every other can be reached from without losing what has been filled in.
+     */
+    public static int shapelessMode() {
+        for (int i = 0; i < COUNT; i++) {
+            if (MODES[i].kind() == RecipeDraft.Kind.CRAFTING_SHAPELESS) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /** Cobblemon's campfire pot: a crafting grid with the pot's own fields written around it. */
+    public static boolean isCookingPot(int mode) {
+        RecipeDraft.Kind kind = MODES[clamp(mode)].kind();
+        return kind == RecipeDraft.Kind.COOKING_POT || kind == RecipeDraft.Kind.COOKING_POT_SHAPELESS;
+    }
+
+    /**
+     * Slots a type shows beside the recipe for something the recipe does not name item by item — the
+     * campfire pot's seasoning, whose contents the player chooses and whose rules the recipe sets.
+     */
+    public static int seasoningSlots(int mode) {
+        return isCookingPot(mode) ? CookingPot.SEASONING_SLOTS : 0;
+    }
+
+    /** Whether a mode is drawn on a three-wide grid rather than a single ingredient slot. */
+    public static boolean usesGrid(int mode) {
+        return isCrafting(mode) || isCreate(mode) || isCookingPot(mode);
+    }
+
+    /** Whether a mode has a row of its own rules above the tag row, with a caption over it. */
+    public static boolean hasRuleRow(int mode) {
+        return isCrafting(mode) || isCookingPot(mode);
+    }
+
     /** Sequenced assembly is edited on a dedicated screen rather than the shared slot layout. */
     public static boolean isSequencedAssembly(int mode) {
         return MODES[clamp(mode)].kind() == RecipeDraft.Kind.SEQUENCED_ASSEMBLY;
@@ -120,8 +169,8 @@ public final class RecipeModes {
      * raw JSON editor instead.
      */
     public static boolean hasCreateType(String createType) {
-        for (int i = FIRST_CREATE; i < COUNT; i++) {
-            if (MODES[i].createType().equals(createType)) {
+        for (Mode mode : MODES) {
+            if (createType.equals(mode.createType())) {
                 return true;
             }
         }
@@ -144,12 +193,13 @@ public final class RecipeModes {
         return Platform.isModLoaded("create");
     }
 
-    /** Whether a mode can be used right now (Create modes require Create to be installed). */
+    /** Whether a mode can be used right now: a type belonging to a mod needs that mod installed. */
     public static boolean available(int mode) {
-        return clamp(mode) < FIRST_CREATE || createLoaded();
+        String required = MODES[clamp(mode)].requiredMod();
+        return required == null || Platform.isModLoaded(required);
     }
 
-    /** Next selectable mode, skipping Create types when Create is absent. */
+    /** Next selectable mode, skipping the types whose mod is not installed. */
     public static int nextAvailable(int mode) {
         int next = clamp(mode);
         for (int i = 0; i < COUNT; i++) {
@@ -183,22 +233,15 @@ public final class RecipeModes {
     public static int indexOf(RecipeDraft draft) {
         if (draft.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
             for (int i = FIRST_CREATE; i < COUNT; i++) {
-                if (MODES[i].createType().equals(draft.createType)) {
+                if (MODES[i].createType() != null && MODES[i].createType().equals(draft.createType)) {
                     return i;
                 }
             }
             return FIRST_CREATE;
         }
-        if (draft.kind == RecipeDraft.Kind.SEQUENCED_ASSEMBLY || draft.kind == RecipeDraft.Kind.MECHANICAL_CRAFTING) {
-            for (int i = FIRST_CREATE; i < COUNT; i++) {
-                if (MODES[i].kind() == draft.kind) {
-                    return i;
-                }
-            }
-            return 0;
-        }
-        for (int i = 0; i < FIRST_CREATE; i++) {
-            if (MODES[i].kind() == draft.kind && (MODES[i].cooking() == null || MODES[i].cooking() == draft.cooking)) {
+        for (int i = 0; i < COUNT; i++) {
+            if (MODES[i].kind() == draft.kind
+                    && (MODES[i].cooking() == null || MODES[i].cooking() == draft.cooking)) {
                 return i;
             }
         }

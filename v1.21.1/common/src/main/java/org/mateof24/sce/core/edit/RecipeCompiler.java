@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
+import org.mateof24.sce.core.recipe.InheritingCraftingRecipe;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -26,7 +27,7 @@ public final class RecipeCompiler {
     // ------------------------------------------------------------------ draft -> json
 
     public static JsonObject toJson(RecipeDraft draft) {
-        return switch (draft.kind) {
+        JsonObject json = switch (draft.kind) {
             case CRAFTING_SHAPELESS -> shapeless(draft);
             case CRAFTING_SHAPED -> shaped(draft);
             case COOKING -> cooking(draft);
@@ -34,20 +35,82 @@ public final class RecipeCompiler {
             case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
             case MECHANICAL_CRAFTING -> mechanicalCrafting(draft);
             case SEQUENCED_ASSEMBLY -> SequencedAssemblyCompiler.toJson(draft);
+            case COOKING_POT -> cookingPot(draft, true);
+            case COOKING_POT_SHAPELESS -> cookingPot(draft, false);
         };
+        restoreInto(draft, json);
+        applyDataRules(draft, json);
+        return json;
     }
 
     private static JsonObject shapeless(RecipeDraft draft) {
         JsonObject json = base(draft, "minecraft:crafting_shapeless");
+        json.add("ingredients", ingredientList(draft));
+        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
+        return json;
+    }
+
+    /** The filled slots of the grid as a flat list, for the types that have no pattern. */
+    private static JsonArray ingredientList(RecipeDraft draft) {
         JsonArray ingredients = new JsonArray();
         for (IngredientValue value : draft.inputs) {
             if (!value.isEmpty()) {
                 ingredients.add(value.toIngredientJson());
             }
         }
-        json.add("ingredients", ingredients);
-        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
+        return ingredients;
+    }
+
+    /**
+     * Cobblemon's campfire pot: one of the two crafting shapes with the three fields the pot needs written
+     * around it. All 116 of the mod's own pot recipes carry all three, so none of them is optional.
+     *
+     * <p>The seasoning pair is written from what the recipe came with, and only falls back to the empty
+     * pair of an unseasoned recipe when there is nothing to keep - which is the case for a recipe being
+     * written from nothing, and only that case.
+     */
+    private static JsonObject cookingPot(RecipeDraft draft, boolean shaped) {
+        JsonObject json = base(draft, shaped ? CookingPot.SHAPED_TYPE : CookingPot.SHAPELESS_TYPE);
+        if (shaped) {
+            writePattern(json, draft);
+        } else {
+            json.add("ingredients", ingredientList(draft));
+        }
+        json.add("result", potResult(draft));
+        json.addProperty("category", CookingPot.category(draft.potCategory));
+        json.addProperty(CookingPot.SEASONING_TAG_KEY, CookingPot.seasoningTag(draft.potSeasoningTag));
+        JsonArray processors = new JsonArray();
+        for (String processor : draft.potProcessors) {
+            if (CookingPot.PROCESSORS.contains(processor)) {
+                processors.add(processor);
+            }
+        }
+        json.add(CookingPot.SEASONING_PROCESSORS_KEY, processors);
         return json;
+    }
+
+    /**
+     * The pot's result: the one the file came with while it is still the same item, and a freshly built
+     * one once the author has changed it.
+     *
+     * <p>Sixteen of Cobblemon's own pot recipes put components on their result — a suspicious stew's
+     * effects, a tea's food block — and this editor has no field for those. Writing the original back
+     * verbatim is what lets those recipes be opened and have their ingredients, category or seasoning
+     * changed without the part nobody edited being quietly dropped. Change the result item and it goes,
+     * which is right: those components described the item that is no longer there.
+     */
+    private static JsonElement potResult(RecipeDraft draft) {
+        JsonObject fresh = stackJson(draft, Math.max(1, draft.resultCount));
+        if (draft.potResult == null || !draft.potResult.isJsonObject()) {
+            return fresh;
+        }
+        JsonObject kept = draft.potResult.getAsJsonObject();
+        String keptId = kept.has("id") ? kept.get("id").getAsString()
+                : (kept.has("item") ? kept.get("item").getAsString() : "");
+        int keptCount = kept.has("count") ? kept.get("count").getAsInt() : 1;
+        boolean sameItem = keptId.equals(fresh.get("id").getAsString());
+        boolean sameCount = keptCount == Math.max(1, draft.resultCount);
+        return sameItem && sameCount ? kept : fresh;
     }
 
     private static JsonObject shaped(RecipeDraft draft) {
@@ -152,26 +215,302 @@ public final class RecipeCompiler {
         return draft.result.isEmpty() ? "minecraft:air" : draft.result.id().toString();
     }
 
+
+
+    /**
+     * A recipe whose {@code type} belongs to another mod but whose shape is one this editor draws.
+     *
+     * <p>Mods routinely register a recipe that <em>is</em> a shaped or shapeless recipe, field for field,
+     * and differs only in what its class does when the result is assembled — Sophisticated Backpacks
+     * copies the old backpack's contents onto the new one that way, and Cobblemon's cooking pot adds its
+     * own seasoning fields around an ordinary grid. Sending all of those to the raw JSON editor because
+     * their type is unfamiliar is a poor answer when the grid is exactly what the editor is for.
+     *
+     * <p>So the shape is read instead of the name — and then checked. It is only accepted if every field
+     * inside the parts this editor rewrites is one it understands: see {@link #understandsEveryField}.
+     * A recipe that hides anything in there still goes to the raw editor, where nothing can be lost.
+     * Together with the type and the untouched extras being written back, editing such a recipe leaves
+     * everything that made it that mod's recipe intact.
+     */
+    private static RecipeDraft fromForeignType(JsonObject json) {
+        if (!understandsEveryField(json)) {
+            return null;
+        }
+        if (json.has("pattern") && json.has("key")) {
+            RecipeDraft draft = fromShaped(json);
+            // A shaped recipe is drawn on a three by three grid here. A bigger pattern would be cut down
+            // to fit and the rest of it lost the moment it was saved, so it goes to the raw editor.
+            return draft.width <= 3 && draft.height <= 3 ? draft : null;
+        }
+        if (json.has("ingredients")) {
+            RecipeDraft draft = fromShapeless(json);
+            // Same reason: the screen offers nine slots and would silently drop a tenth ingredient.
+            return draft.inputs.size() <= 9 ? draft : null;
+        }
+        return null;
+    }
+
+    /**
+     * A campfire pot recipe read as the grid it is.
+     *
+     * <p>It goes through the same checks as any other mod's recipe: a pot recipe holding an ingredient
+     * this editor cannot reproduce belongs in the raw editor exactly as much as any other would. Which of
+     * the two pot types gets written back is decided by the shape that was actually read rather than by
+     * the name in the file, so the recipe always says what it really is.
+     */
+    private static RecipeDraft fromCookingPot(JsonObject json) {
+        RecipeDraft draft = fromPotShape(json);
+        if (draft == null) {
+            return null;
+        }
+        // Kept only when there is something in it this editor cannot rebuild; otherwise the ordinary
+        // path writes the result and there is nothing to remember.
+        JsonElement result = json.get("result");
+        draft.potResult = result != null && result.isJsonObject()
+                && result.getAsJsonObject().has("components") ? result.deepCopy() : null;
+        draft.kind = draft.kind == RecipeDraft.Kind.CRAFTING_SHAPED
+                ? RecipeDraft.Kind.COOKING_POT : RecipeDraft.Kind.COOKING_POT_SHAPELESS;
+        draft.potCategory = CookingPot.category(
+                json.has("category") ? json.get("category").getAsString() : null);
+        return draft;
+    }
+
+    /**
+     * The pot's grid, read with the same care as any other mod's recipe but one rule relaxed.
+     *
+     * <p>{@link #understandsEveryField} refuses a result carrying anything this editor cannot rebuild,
+     * because rewriting it would lose that. A pot recipe is the one case where it does not have to be
+     * rebuilt: the original is kept and written back untouched, so a result with components is safe here
+     * and only here.
+     */
+    private static RecipeDraft fromPotShape(JsonObject json) {
+        if (!understandsIngredients(json)) {
+            return null;
+        }
+        if (json.has("pattern") && json.has("key")) {
+            RecipeDraft draft = fromShaped(json);
+            return draft.width <= 3 && draft.height <= 3 ? draft : null;
+        }
+        if (json.has("ingredients")) {
+            RecipeDraft draft = fromShapeless(json);
+            // Cobblemon's own serializer refuses more than nine, which is exactly what the grid holds.
+            return draft.inputs.size() <= 9 ? draft : null;
+        }
+        return null;
+    }
+
+    /**
+     * Whether every field inside the parts this editor rewrites is one it can reproduce.
+     *
+     * <p>Deliberately strict, and only used for a type this editor does not own. Keys outside these parts
+     * are kept verbatim ({@link RecipeDraft#extras}), but anything nested inside an ingredient or a result
+     * would be rewritten from the draft and therefore lost. Refusing here costs the author a visual
+     * editor for that one recipe; accepting wrongly costs them the recipe.
+     */
+    private static boolean understandsEveryField(JsonObject json) {
+        return understandsIngredients(json) && (!json.has("result") || plainResult(json.get("result")));
+    }
+
+    /** The ingredient half of the check, which every type shares. */
+    private static boolean understandsIngredients(JsonObject json) {
+        if (json.has("key")) {
+            if (!json.get("key").isJsonObject()) {
+                return false;
+            }
+            for (Map.Entry<String, JsonElement> entry : json.getAsJsonObject("key").entrySet()) {
+                if (!plainIngredient(entry.getValue())) {
+                    return false;
+                }
+            }
+        }
+        if (json.has("ingredients")) {
+            if (!json.get("ingredients").isJsonArray()) {
+                return false;
+            }
+            for (JsonElement element : json.getAsJsonArray("ingredients")) {
+                if (!plainIngredient(element)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** One item or one tag and nothing else. A list of options is refused: only the first would survive. */
+    private static boolean plainIngredient(JsonElement element) {
+        if (element == null || !element.isJsonObject()) {
+            return false;
+        }
+        JsonObject object = element.getAsJsonObject();
+        if (object.size() != 1) {
+            return false;
+        }
+        return object.has("item") || object.has("tag");
+    }
+
+    /** An item and optionally how many of it. Anything else in there would not survive a rewrite. */
+    private static boolean plainResult(JsonElement element) {
+        if (element == null) {
+            return false;
+        }
+        if (element.isJsonPrimitive()) {
+            return true; // older files name the result outright
+        }
+        if (!element.isJsonObject()) {
+            return false;
+        }
+        for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+            String key = entry.getKey();
+            if (!key.equals("id") && !key.equals("item") && !key.equals("count")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
+     * Writes this mod's own data block, and switches the recipe to the kind that understands it.
+     *
+     * <p>Only for the crafting shapes, and only when there is something to say: a recipe that neither
+     * requires data on its ingredients nor puts any on its result stays an ordinary vanilla recipe, which
+     * is what most of them are. Runs after the preserved parts are put back, so asking for this is a
+     * deliberate act that wins over a type remembered from the file.
+     */
+    private static void applyDataRules(RecipeDraft draft, JsonObject json) {
+        boolean carries = !draft.carry.isEmpty() && !draft.carry.equals("none");
+        if (!carries && draft.requiredStacks.isEmpty()) {
+            return;
+        }
+        if (draft.kind == RecipeDraft.Kind.CRAFTING_SHAPED) {
+            json.addProperty("type", InheritingCraftingRecipe.SHAPED_TYPE);
+        } else if (draft.kind == RecipeDraft.Kind.CRAFTING_SHAPELESS) {
+            json.addProperty("type", InheritingCraftingRecipe.SHAPELESS_TYPE);
+        } else {
+            return; // nothing else assembles a result this way
+        }
+        json.add(InheritingCraftingRecipe.DATA_KEY, InheritingCraftingRecipe.writeData(
+                draft.carry, draft.requiredStacks, draft.resultStack));
+    }
+
+    /** Reads the data block back, so re-opening a recipe shows the rules it was saved with. */
+    private static void readDataRules(RecipeDraft draft, JsonObject json) {
+        draft.requiredStacks.clear();
+        draft.resultStack = "";
+        draft.carry = "auto";
+        draft.matchData = "auto";
+        if (!json.has(InheritingCraftingRecipe.DATA_KEY)
+                || !json.get(InheritingCraftingRecipe.DATA_KEY).isJsonObject()) {
+            return;
+        }
+        JsonObject data = json.getAsJsonObject(InheritingCraftingRecipe.DATA_KEY);
+        draft.carry = data.has("carry") ? data.get("carry").getAsString() : "none";
+        if (data.has("require") && data.get("require").isJsonArray()) {
+            for (JsonElement element : data.getAsJsonArray("require")) {
+                draft.requiredStacks.add(element.getAsString());
+            }
+        }
+        // Saved rules are explicit: reopening must show what the file says, not guess again.
+        draft.matchData = draft.requiredStacks.isEmpty() ? "ignore" : "require";
+        draft.resultStack = data.has("result") ? data.get("result").getAsString() : "";
+    }
+
+    // ------------------------------------------------------------------ what the editor does not model
+
+    /**
+     * Every top-level key some compiler here writes for itself. Anything else in a recipe file belongs to
+     * whoever wrote it and is carried through untouched — see {@link RecipeDraft#extras}.
+     */
+    private static final java.util.Set<String> MODELLED_KEYS = java.util.Set.of(
+            "type", "group",
+            "pattern", "key", "ingredients", "ingredient", "result", "results",
+            "experience", "cookingtime", "count",
+            "acceptMirrored", "accept_mirrored",
+            "processingTime", "processing_time", "heatRequirement", "heat_requirement",
+            "transitionalItem", "transitional_item", "sequence", "loops",
+            InheritingCraftingRecipe.DATA_KEY);
+
+    /** The campfire pot's own fields, which this editor models rather than carries. */
+    private static final java.util.Set<String> POT_KEYS = java.util.Set.of(
+            "category", CookingPot.SEASONING_TAG_KEY, CookingPot.SEASONING_PROCESSORS_KEY);
+
+    /** Remembers a recipe's own type and everything about it this editor has no field for. */
+    public static void preserveFrom(RecipeDraft draft, JsonObject json) {
+        String type = json.has("type") ? json.get("type").getAsString() : "";
+        boolean pot = CookingPot.isPotType(type);
+        // A type this editor writes for itself is not remembered: it follows the settings on
+        // screen, and holding on to it would override turning inheritance back off. The pot's two types
+        // are the editor's own in the same sense - a mode writes them - so they are not remembered either.
+        draft.sourceType = InheritingCraftingRecipe.SHAPED_TYPE.equals(type)
+                || InheritingCraftingRecipe.SHAPELESS_TYPE.equals(type) || pot ? "" : type;
+        draft.extras.clear();
+        draft.potSeasoningTag = CookingPot.NO_SEASONING;
+        draft.potProcessors.clear();
+        for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
+            String key = entry.getKey();
+            if (MODELLED_KEYS.contains(key)) {
+                continue;
+            }
+            if (pot && POT_KEYS.contains(key)) {
+                // Read into fields instead of carried as extras: these are the author's decisions about
+                // the pot's three seasoning slots, they are editable, and as extras they would follow the
+                // recipe into a type that has no idea what they are.
+                if (key.equals(CookingPot.SEASONING_TAG_KEY)) {
+                    draft.potSeasoningTag = CookingPot.seasoningTag(entry.getValue().getAsString());
+                } else if (key.equals(CookingPot.SEASONING_PROCESSORS_KEY)) {
+                    draft.potProcessors.clear();
+                    if (entry.getValue().isJsonArray()) {
+                        for (JsonElement element : entry.getValue().getAsJsonArray()) {
+                            draft.potProcessors.add(element.getAsString());
+                        }
+                    }
+                }
+                continue;
+            }
+            draft.extras.put(key, entry.getValue().deepCopy());
+        }
+    }
+
+    /**
+     * Puts back what {@link #preserveFrom} kept. What the editor wrote always wins: these are the parts
+     * it does not understand, so it must not be able to overwrite a decision it did understand.
+     */
+    public static void restoreInto(RecipeDraft draft, JsonObject json) {
+        for (Map.Entry<String, JsonElement> entry : draft.extras.entrySet()) {
+            if (!json.has(entry.getKey())) {
+                json.add(entry.getKey(), entry.getValue());
+            }
+        }
+        if (!draft.sourceType.isEmpty()) {
+            json.addProperty("type", draft.sourceType);
+        }
+    }
+
     // ------------------------------------------------------------------ json -> draft
 
     /** Best-effort parse of a supported vanilla recipe JSON into an editable draft; null if unsupported. */
     public static RecipeDraft fromJson(ResourceLocation id, JsonObject json) {
         String type = json.has("type") ? json.get("type").getAsString() : "";
         RecipeDraft draft = switch (type) {
-            case "minecraft:crafting_shapeless" -> fromShapeless(json);
-            case "minecraft:crafting_shaped" -> fromShaped(json);
+            case "minecraft:crafting_shapeless", InheritingCraftingRecipe.SHAPELESS_TYPE -> fromShapeless(json);
+            case "minecraft:crafting_shaped", InheritingCraftingRecipe.SHAPED_TYPE -> fromShaped(json);
             case "minecraft:smelting", "minecraft:blasting", "minecraft:smoking", "minecraft:campfire_cooking" ->
                     fromCooking(json, type);
             case "minecraft:stonecutting" -> fromStonecutting(json);
             case "create:mechanical_crafting" -> fromMechanicalCrafting(json);
             case SequencedAssemblyCompiler.TYPE -> SequencedAssemblyCompiler.fromJson(id, json);
-            default -> type.startsWith("create:") ? CreateRecipeCompiler.fromJson(id, json) : null;
+            case CookingPot.SHAPED_TYPE, CookingPot.SHAPELESS_TYPE -> fromCookingPot(json);
+            default -> type.startsWith("create:")
+                    ? CreateRecipeCompiler.fromJson(id, json)
+                    : fromForeignType(json);
         };
         if (draft != null) {
             draft.id = id;
             if (json.has("group")) {
                 draft.group = json.get("group").getAsString();
             }
+            preserveFrom(draft, json);
+            readDataRules(draft, json);
         }
         return draft;
     }

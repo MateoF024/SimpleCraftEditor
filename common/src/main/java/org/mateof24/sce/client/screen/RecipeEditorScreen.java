@@ -27,9 +27,13 @@ import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
+import org.mateof24.sce.core.recipe.InheritingCraftingRecipe;
 import org.mateof24.sce.menu.EditorLayout;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 import org.mateof24.sce.net.SceNetworking;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Recipe editor on a real synced container: input/output slots and the player inventory behave natively
@@ -75,8 +79,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private EditBox fluidAmountBox;
     private String fluidValue = "";
     private String fluidAmountValue = Integer.toString(IngredientValue.BUCKET);
-    private Component status = Component.empty();
+    private final StatusLine status = new StatusLine();
 
+    /** The recipe's own type when it is not one this editor writes, for the type button's tooltip. */
+    private final String keptType;
+    /** The order each rule button walks through, forwards on a click and backwards on a right-click. */
+    private static final List<String> MATCH_RULES = List.of("auto", "ignore", "require");
+    private static final List<String> CARRY_RULES = List.of("auto", "none", "recipe", "ingredients", "both");
+
+    /** The buttons that cycle, kept so a right-click can ask them whether it landed on one. */
+    private Button typeRule;
+    private Button matchRule;
+    private Button carryRule;
+
+    /** How the crafted result's data is decided: {@code auto}, or one of the Carry names. */
+    private String carry = "auto";
+    /** Whether the ingredients' data is part of the match: {@code auto}, {@code ignore} or {@code require}. */
+    private String matchData = "auto";
     private String idValue;
     private String tagValue = "";
     private float pendingExp = 0.1f;
@@ -105,10 +124,26 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.overlayOutCount = new int[outputCount];
         this.outputChance = new float[outputCount];
         this.idValue = menu.editId() != null ? menu.editId().toString() : "sce:new_recipe";
+        this.keptType = keptTypeOf(menu.baseDraft(), mode);
+        // Once per opening, in case the tags were reloaded while the last screen was closed.
+        TagCycle.forget();
         initFromBase(menu.baseDraft());
     }
 
+    /**
+     * The type worth telling the author about: one belonging to another mod. A vanilla type, or a
+     * Create type this editor writes itself, is what would be written anyway and says nothing.
+     */
+    private static String keptTypeOf(RecipeDraft base, int mode) {
+        if (base == null || base.sourceType.isEmpty() || base.sourceType.startsWith("minecraft:")) {
+            return null;
+        }
+        return base.sourceType.equals(RecipeModes.createType(mode)) ? null : base.sourceType;
+    }
+
     private void initFromBase(RecipeDraft base) {
+        carry = base != null ? base.carry : "auto";
+        matchData = base != null ? base.matchData : "auto";
         for (int i = 0; i < overlay.length; i++) {
             overlay[i] = IngredientValue.empty();
         }
@@ -186,19 +221,52 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         super.init();
         layout = new EditorLayout(mode);
         fields.clear();
+        // Rebuilt from scratch every time; the rule buttons are not there for every type, so the
+        // references have to go away with them or a right-click would reach a button that is gone.
+        matchRule = null;
+        carryRule = null;
 
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.type", Component.translatable(RecipeModes.labelKey(mode))), b ->
-                reopen(RecipeModes.nextAvailable(mode)))
-                .bounds(leftPos + 45, topPos + 4, 150, 16).build());
+        Button.Builder typeButton = Button.builder(
+                        Component.translatable("sce.button.type", Component.translatable(RecipeModes.labelKey(mode))),
+                        b -> reopen(RecipeModes.nextAvailable(mode)))
+                .bounds(leftPos + 45, topPos + 4, 150, 16);
+        // A recipe belonging to another mod keeps its own type when saved, which is the difference
+        // between editing a backpack recipe and quietly turning it into an ordinary one. Said here
+        // rather than on the button face, which has no room for a mod's id.
+        typeButton.tooltip(net.minecraft.client.gui.components.Tooltip.create(keptType != null
+                ? Component.translatable("sce.tooltip.keeps_type", keptType)
+                : Component.translatable("sce.tooltip.type")));
+        typeRule = addRenderableWidget(typeButton.build());
 
-        idBox = new EditBox(font, leftPos + 8, topPos + 22, 180, 16, Component.translatable("sce.hint.id"));
+        idBox = new EditBox(font, leftPos + 8, topPos + EditorLayout.ID_ROW_Y, 180, 16, Component.translatable("sce.hint.id"));
         idBox.setMaxLength(200);
         idBox.setValue(idValue);
         idBox.setResponder(s -> idValue = s);
         addRenderableWidget(idBox);
         fields.add(idBox, FieldAssist.id(), FieldAssist.Source.RECIPES);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.load"), b -> reopen(-1))
-                .bounds(leftPos + 192, topPos + 22, 40, 16).build());
+                .bounds(leftPos + 192, topPos + EditorLayout.ID_ROW_Y, 40, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.load"))).build());
+
+        // Only for the crafting types, and only when the recipe is not already another mod's: a mod's own
+        // recipe keeps its type and decides these things for itself, so offering them too would be two
+        // answers to one question.
+        if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
+            matchRule = addRenderableWidget(Button.builder(
+                            ruleLabel(matchData, effectiveRequire() ? "require" : "ignore"),
+                            b -> cycleMatchData(1))
+                    .bounds(leftPos + 8, topPos + layout.ruleRowY, 110, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                            Component.translatable("sce.tooltip.match_data")))
+                    .build());
+            carryRule = addRenderableWidget(Button.builder(
+                            ruleLabel(carry, effectiveCarry()),
+                            b -> cycleCarry(1))
+                    .bounds(leftPos + 122, topPos + layout.ruleRowY, 110, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                            Component.translatable("sce.tooltip.carry")))
+                    .build());
+        }
 
         int tagRowY = layout.tagRowY;
         tagBox = new EditBox(font, leftPos + 8, topPos + tagRowY, 98, 16, Component.translatable("sce.hint.tag"));
@@ -209,9 +277,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         addRenderableWidget(tagBox);
         fields.add(tagBox, FieldAssist.id(), FieldAssist.Source.ITEM_TAGS);
         addRenderableWidget(Button.builder(Component.translatable("sce.button.set_tag"), b -> applyTag())
-                .bounds(leftPos + 110, topPos + tagRowY, 54, 16).build());
+                .bounds(leftPos + 110, topPos + tagRowY, 54, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.set_tag"))).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
-                .bounds(leftPos + 168, topPos + tagRowY, 64, 16).build());
+                .bounds(leftPos + 168, topPos + tagRowY, 64, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.clear_slot"))).build());
 
         if (mechanical) {
             // Sits in the free space beside the grid, under the result slot.
@@ -219,7 +289,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     Component.translatable(mirrored ? "sce.toggle.on" : "sce.toggle.off")), b -> {
                 mirrored = !mirrored;
                 rebuildWidgets();
-            }).bounds(leftPos + EditorLayout.WIDTH - EditorLayout.PADDING - 84, topPos + layout.mirroredY, 84, 16).build());
+            }).bounds(leftPos + EditorLayout.WIDTH - EditorLayout.PADDING - 84, topPos + layout.mirroredY, 84, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.mirrored"))).build());
         }
 
         if (RecipeModes.isCooking(mode)) {
@@ -260,7 +331,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
                     rebuildWidgets();
-                }).bounds(leftPos + 164, topPos + layout.extraRowY, 68, 16).build());
+                }).bounds(leftPos + 164, topPos + layout.extraRowY, 68, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.heat"))).build());
             }
 
             // Only Create takes fluids, and it takes them as an amount rather than as a bucket item.
@@ -277,12 +349,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             addRenderableWidget(fluidAmountBox);
             fields.add(fluidAmountBox, FieldAssist.intAtLeast(1));
             addRenderableWidget(Button.builder(Component.translatable("sce.button.set_fluid"), b -> applyFluid())
-                    .bounds(leftPos + 166, topPos + layout.fluidRowY, 66, 16).build());
+                    .bounds(leftPos + 166, topPos + layout.fluidRowY, 66, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.set_fluid"))).build());
         }
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + EditorLayout.BUTTON_ROW_Y, 52, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + EditorLayout.BUTTON_ROW_Y, 58, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + EditorLayout.BUTTON_ROW_Y, 40, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.disable"), b -> disable()).bounds(leftPos + 64, topPos + EditorLayout.BUTTON_ROW_Y, 58, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.disable"))).build());
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.raw"), b -> openRaw()).bounds(leftPos + 126, topPos + EditorLayout.BUTTON_ROW_Y, 40, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.raw"))).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.close"), b -> onClose()).bounds(leftPos + 170, topPos + EditorLayout.BUTTON_ROW_Y, 62, 20).build());
 
         // Opening a new menu recenters the cursor (the client briefly returns to the world in between);
@@ -332,19 +407,29 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         return super.keyPressed(key, scanCode, modifiers);
     }
 
+    /** Steps one cycling button back if the click landed on it. */
+    private boolean steppedBack(double mouseX, double mouseY, Button widget, Runnable back) {
+        if (widget == null || !widget.isMouseOver(mouseX, mouseY)) {
+            return false;
+        }
+        // Buttons click when pressed; a right-click handled by hand has to say so itself.
+        minecraft.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
+                net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        back.run();
+        return true;
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0 && fields.mouseClicked(mouseX, mouseY)) {
             return true;
         }
-        // The type button only steps forward on a normal click; right-clicking it steps back, so
-        // overshooting the type you wanted does not mean cycling all the way round again.
-        if (button == 1 && mouseX >= leftPos + 45 && mouseX < leftPos + 195
-                && mouseY >= topPos + 4 && mouseY < topPos + 20) {
-            // Buttons click when pressed; a right-click handled by hand has to say so itself.
-            minecraft.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
-                    net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
-            reopen(RecipeModes.previousAvailable(mode));
+        // Every button that cycles steps forward on a normal click and back on a right-click, so
+        // overshooting the value you wanted does not mean going all the way round again.
+        if (button == 1
+                && (steppedBack(mouseX, mouseY, typeRule, () -> reopen(RecipeModes.previousAvailable(mode)))
+                || steppedBack(mouseX, mouseY, matchRule, () -> cycleMatchData(-1))
+                || steppedBack(mouseX, mouseY, carryRule, () -> cycleCarry(-1)))) {
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -391,16 +476,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private void applyTag() {
         if (selectedInput < 0) {
-            status = Component.translatable("sce.status.click_input_first");
+            status.set(Component.translatable("sce.status.click_input_first"));
             return;
         }
         if (!menu.gridItem(selectedInput).isEmpty()) {
-            status = Component.translatable("sce.status.clear_slot_first");
+            status.set(Component.translatable("sce.status.clear_slot_first"));
             return;
         }
         ResourceLocation tag = ResourceLocation.tryParse(tagValue);
         if (tag == null) {
-            status = Component.translatable("sce.status.invalid_tag");
+            status.set(Component.translatable("sce.status.invalid_tag"));
             return;
         }
         overlay[selectedInput] = IngredientValue.tag(tag);
@@ -413,7 +498,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         boolean tagged = raw.startsWith("#");
         ResourceLocation fluid = ResourceLocation.tryParse(tagged ? raw.substring(1) : raw);
         if (fluid == null) {
-            status = Component.translatable("sce.status.invalid_fluid");
+            status.set(Component.translatable("sce.status.invalid_fluid"));
             return;
         }
         int amount = Math.max(1, parseInt(fluidAmountValue, IngredientValue.BUCKET));
@@ -422,22 +507,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 : IngredientValue.fluid(fluid, amount);
         if (selectedIsOutput && selectedOutput >= 0) {
             if (tagged) {
-                status = Component.translatable("sce.status.fluid_tag_output");
+                status.set(Component.translatable("sce.status.fluid_tag_output"));
                 return;
             }
             if (!menu.outputItem(selectedOutput).isEmpty()) {
-                status = Component.translatable("sce.status.clear_slot_first");
+                status.set(Component.translatable("sce.status.clear_slot_first"));
                 return;
             }
             overlayOut[selectedOutput] = value;
             return;
         }
         if (selectedInput < 0) {
-            status = Component.translatable("sce.status.click_slot_first");
+            status.set(Component.translatable("sce.status.click_slot_first"));
             return;
         }
         if (!menu.gridItem(selectedInput).isEmpty()) {
-            status = Component.translatable("sce.status.clear_slot_first");
+            status.set(Component.translatable("sce.status.clear_slot_first"));
             return;
         }
         overlay[selectedInput] = value;
@@ -449,6 +534,77 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         } else if (selectedInput >= 0) {
             overlay[selectedInput] = IngredientValue.empty();
         }
+    }
+
+
+    // ------------------------------------------------------------------ data rules
+
+    /**
+     * What {@code auto} means for the ingredients right now: require their data if the author actually
+     * put data-carrying items in the grid, because going to the trouble of placing a named chest is
+     * what asking for that chest looks like.
+     */
+    private boolean autoRequires() {
+        for (int i = 0; i < inputCount; i++) {
+            ItemStack stack = menu.gridItem(i);
+            if (!stack.isEmpty() && stack.hasTag()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** What {@code auto} means for the result: whatever data is actually on the table, from either side. */
+    private String autoCarry() {
+        boolean fromResult = resultHasData();
+        boolean fromGrid = autoRequires();
+        if (fromResult && fromGrid) {
+            return "both";
+        }
+        if (fromResult) {
+            return "recipe";
+        }
+        return fromGrid ? "ingredients" : "none";
+    }
+
+    private boolean resultHasData() {
+        ItemStack stack = menu.outputSlot(0).getItem();
+        return !stack.isEmpty() && stack.hasTag();
+    }
+
+    private boolean effectiveRequire() {
+        return matchData.equals("auto") ? autoRequires() : matchData.equals("require");
+    }
+
+    private String effectiveCarry() {
+        return carry.equals("auto") ? autoCarry() : carry;
+    }
+
+    /**
+     * The button face: what the rule amounts to right now, marked when the editor is the one deciding.
+     *
+     * <p>Only the answer, because the question is written in the caption above the button — two of these
+     * share a row, and a face that repeated the question had no room left to give the answer.
+     */
+    private Component ruleLabel(String setting, String effective) {
+        Component value = Component.translatable("sce.rule." + effective);
+        return setting.equals("auto") ? Component.translatable("sce.rule.auto", value) : value;
+    }
+
+    private void cycleMatchData(int by) {
+        matchData = stepRule(MATCH_RULES, matchData, by);
+        rebuildWidgets();
+    }
+
+    private void cycleCarry(int by) {
+        carry = stepRule(CARRY_RULES, carry, by);
+        rebuildWidgets();
+    }
+
+    /** One step along a rule's order, wrapping at both ends so a right-click is a real way back. */
+    private static String stepRule(List<String> rules, String current, int by) {
+        int index = Math.max(0, rules.indexOf(current));
+        return rules.get(Math.floorMod(index + by, rules.size()));
     }
 
     private RecipeDraft buildDraft(ResourceLocation id) {
@@ -483,35 +639,78 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 draft.cookingTime = pendingTime;
             }
         }
+        // Whatever the recipe carried that this editor does not model goes back out with it, and
+        // so does its own type. Both are absent when the type button was used, because that
+        // re-opens the editor without the stored recipe — which is how you say "make it plain".
+        // Not when the recipe's own type is being kept: the buttons are not on screen then, so anything
+        // captured here would be a rule nobody asked for — and writing one would change the type back to
+        // ours and undo the whole point of keeping theirs.
+        if (RecipeModes.isCrafting(mode) && keptType == null) {
+            // Captured from what is physically in the slots, which is the whole point: the author shows
+            // the editor the chest they mean rather than describing it.
+            draft.carry = effectiveCarry();
+            draft.matchData = effectiveRequire() ? "require" : "ignore";
+            draft.requiredStacks.clear();
+            if (effectiveRequire()) {
+                for (int i = 0; i < inputCount; i++) {
+                    ItemStack stack = menu.gridItem(i);
+                    if (!stack.isEmpty() && stack.hasTag()) {
+                        draft.requiredStacks.add(InheritingCraftingRecipe.writeStack(stack));
+                    }
+                }
+            }
+            ItemStack out = menu.outputSlot(0).getItem();
+            draft.resultStack = !out.isEmpty() && out.hasTag()
+                    ? InheritingCraftingRecipe.writeStack(out) : "";
+        }
+        RecipeDraft base = menu.baseDraft();
+        if (base != null) {
+            draft.sourceType = base.sourceType;
+            draft.extras.putAll(base.extras);
+        }
         return draft;
     }
 
     private void save() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = Component.translatable("sce.status.invalid_id");
+            status.set(Component.translatable("sce.status.invalid_id"));
             return;
         }
         // Nothing can display a cooking recipe with no time — a viewer divides by it to animate its
         // progress arrow — so say so now rather than saving something other than what is on screen.
         if (RecipeModes.isCooking(mode) && pendingTime <= 0) {
-            status = Component.translatable("sce.status.time_required");
+            status.set(Component.translatable("sce.status.time_required"));
             return;
         }
         SceNetworking.sendSave(id, RecipeCompiler.toJson(buildDraft(id)).toString());
-        status = Component.translatable("sce.status.saving", id.toString());
+        status.set(Component.translatable("sce.status.saving", id.toString()));
     }
 
-    /** Called from the network layer with the server's verdict on a save request. */
+    /**
+     * Called from the network layer with the server's verdict on a save request.
+     *
+     * <p>A save that worked goes back to the manager and says so there: that is where the recipe just
+     * saved can be seen in the list, so the confirmation and the thing it confirms are on the same
+     * screen. A save that failed stays here, because the form that has to be fixed is here.
+     */
     public void onSaveResult(ResourceLocation id, boolean ok) {
-        status = Component.translatable(ok ? "sce.status.saved" : "sce.status.save_failed", id.toString());
+        if (ok) {
+            RecipeManagerScreen.showOnOpen(Component.translatable("sce.status.saved", id.toString()));
+            // Through onClose rather than straight to the other screen: this one is a container screen,
+            // and walking away without closing it leaves the server holding a menu nobody is looking at.
+            onClose();
+            minecraft.setScreen(new RecipeManagerScreen());
+            return;
+        }
+        status.set(Component.translatable("sce.status.save_failed", id.toString()));
     }
 
     /** Opens the raw-JSON view for this recipe: the server's stored JSON if any, else the current draft. */
     private void openRaw() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = Component.translatable("sce.status.invalid_id");
+            status.set(Component.translatable("sce.status.invalid_id"));
             return;
         }
         ClientEditorState.requestJson(id, json -> {
@@ -523,11 +722,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private void disable() {
         ResourceLocation id = ResourceLocation.tryParse(idValue);
         if (id == null) {
-            status = Component.translatable("sce.status.invalid_id");
+            status.set(Component.translatable("sce.status.invalid_id"));
             return;
         }
         SceNetworking.sendSimple(SceNetworking.DISABLE, id);
-        status = Component.translatable("sce.status.requested_disable", id.toString());
+        status.set(Component.translatable("sce.status.requested_disable", id.toString()));
     }
 
     private IngredientValue resolveInput(int index) {
@@ -712,7 +911,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static ItemStack stackFor(IngredientValue value) {
         if (value.kind() == IngredientValue.Kind.TAG) {
-            return new ItemStack(Items.NAME_TAG);
+            // The tag's own members, walked through one at a time. The name tag is only what is left when
+            // the tag holds nothing to walk: it says "a tag" and nothing more, which is all there is.
+            ItemStack shown = TagCycle.item(value.id());
+            return shown.isEmpty() ? new ItemStack(Items.NAME_TAG) : shown;
         }
         if (value.isFluid()) {
             // Show the fluid's own bucket, so water reads as water rather than as an empty bucket. A fluid
@@ -741,9 +943,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0x404040, false);
             graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0x404040, false);
         }
-        if (!status.getString().isEmpty()) {
-            graphics.drawCenteredString(font, status, imageWidth / 2, imageHeight + 4, 0xE0E070);
+        if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
+            // The captions for the two rule buttons, in the line the layout keeps free above them. White
+            // with a shadow rather than the dark grey the other labels use: these sit against the panel
+            // and against the button below them, and only that pair stays readable on both.
+            // Left-aligned on their button and in the same ink as every other label on the panel: white
+            // read as a heading shouting over the rest of the screen.
+            int y = layout.ruleRowY - EditorLayout.LABEL_LINE + 1;
+            graphics.drawString(font, Component.translatable("sce.label.match_data"), 8, y, 0x000000, false);
+            graphics.drawString(font, Component.translatable("sce.label.carry"), 122, y, 0x000000, false);
         }
+        status.drawCentered(graphics, font, imageWidth / 2, imageHeight + 4);
     }
 
     private void drawRightAligned(GuiGraphics graphics, Component text, int right, int y) {
@@ -788,7 +998,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return;
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
-            graphics.renderTooltip(font, Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN), mouseX, mouseY);
+            // The item on show, then the tag it came out of and how big that tag is — the three things
+            // an author needs to judge a tag they did not write.
+            List<Component> lines = new ArrayList<>();
+            ItemStack shown = TagCycle.item(value.id());
+            if (!shown.isEmpty()) {
+                lines.addAll(getTooltipFromContainerItem(shown));
+            }
+            lines.add(Component.literal("#" + value.id()).withStyle(ChatFormatting.GREEN));
+            lines.add(Component.translatable("sce.tooltip.tag_members", TagCycle.items(value.id()).size())
+                    .withStyle(ChatFormatting.DARK_GRAY));
+            graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
         } else if (value.isFluid()) {
             graphics.renderTooltip(font, Component.literal((value.isFluidTag() ? "#" : "") + value.id()
                     + " (" + value.amount() + " mB)").withStyle(ChatFormatting.AQUA), mouseX, mouseY);

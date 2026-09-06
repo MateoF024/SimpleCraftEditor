@@ -2,7 +2,6 @@ package org.mateof24.sce.core.state;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
@@ -10,6 +9,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.core.SceDebug;
+import org.mateof24.sce.core.ScePerf;
 import org.mateof24.sce.core.compat.PolymorphRecipeSelection;
 import org.mateof24.sce.core.edit.RecipeDraft;
 
@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -49,6 +50,13 @@ public final class RecipeStateManager {
     private List<Recipe<?>> pureBase = List.of();
     private boolean pureBaseKnown;
     private Consumer<MinecraftServer> changeListener;
+    private RecipePatchSender patchSender;
+    /**
+     * Every id the clients have already been told about in this session. Kept because an id can stop
+     * being edited: re-enable a disabled recipe and it leaves the disabled set, so without this it would
+     * never be mentioned again and every client would keep the version where it was missing.
+     */
+    private final Set<ResourceLocation> alreadyToldClients = new HashSet<>();
 
     private RecipeStateManager() {
     }
@@ -56,6 +64,15 @@ public final class RecipeStateManager {
     /** Set by the networking layer so client editor state is re-synced after every mutation. */
     public void setChangeListener(Consumer<MinecraftServer> listener) {
         this.changeListener = listener;
+    }
+
+    /** How the recipe changes reach the clients. Set by the networking layer, which owns the channels. */
+    public interface RecipePatchSender {
+        void send(MinecraftServer server, Map<ResourceLocation, JsonObject> changed, Set<ResourceLocation> removed);
+    }
+
+    public void setPatchSender(RecipePatchSender sender) {
+        this.patchSender = sender;
     }
 
     /**
@@ -68,6 +85,7 @@ public final class RecipeStateManager {
      * <p>The incoming map is also the full datapack recipe source, captured for the editor to load from.
      */
     public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
+        ScePerf.Run perf = ScePerf.start("recipe load");
         SceDebug.reportEnvironment();
         RecipeState s = state();
         // Retention check: if our own recipes are already in the map before we add them, the map is being
@@ -77,12 +95,17 @@ public final class RecipeStateManager {
         SceDebug.log(SceDebug.Category.RELOAD,
                 "Recipes loading: {} in the pack. {} of our own are already in there before we add them (should be 0).",
                 map.size(), alreadyPresent);
+        perf.stage("read our state");
         rawJsonCache.clear();
         rawJsonCache.putAll(map);
         // A new load replaces the recipe set, so anything worked out from the old one is stale.
         injectedIds.clear();
         pureBase = List.of();
         pureBaseKnown = false;
+        RecipeOutputIndex.INSTANCE.invalidate();
+        // A load sends every client the whole recipe set again, so nothing is outstanding after it.
+        alreadyToldClients.clear();
+        perf.stage("capture the pack's recipes");
 
         int removed = 0;
         for (ResourceLocation id : s.disabled().keySet()) {
@@ -90,6 +113,7 @@ public final class RecipeStateManager {
                 removed++;
             }
         }
+        perf.stage("remove the disabled ones");
         int added = 0;
         int verified = 0;
         for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
@@ -115,9 +139,11 @@ public final class RecipeStateManager {
                         "  Failed to add '{}': {}", entry.getKey(), e.toString());
             }
         }
+        perf.stage("add ours");
         SceDebug.log(SceDebug.Category.RELOAD,
                 "Recipes ready: {} from the pack, {} disabled by us removed, {} of ours added ({} confirmed).",
                 rawJsonCache.size(), removed, added, verified);
+        perf.finish("{} recipes in the pack, {} removed, {} added", rawJsonCache.size(), removed, added);
     }
 
     /**
@@ -225,7 +251,7 @@ public final class RecipeStateManager {
                 changed = true;
             }
             if (changed) {
-                reapplyAndSync(server, server.getRecipeManager());
+                reapplyAndSync(server, server.getRecipeManager(), "turn our own recipe off");
             }
             return changed;
         }
@@ -238,7 +264,7 @@ public final class RecipeStateManager {
         }
         JsonElement raw = rawJsonCache.get(id);
         s.disable(id, raw != null && raw.isJsonObject() ? raw.getAsJsonObject().deepCopy() : null);
-        reapplyAndSync(server, manager);
+        reapplyAndSync(server, manager, "disable a recipe");
         return true;
     }
 
@@ -253,7 +279,7 @@ public final class RecipeStateManager {
             changed = true;
         }
         if (changed) {
-            reapplyAndSync(server, server.getRecipeManager());
+            reapplyAndSync(server, server.getRecipeManager(), "restore a recipe");
         }
         return changed;
     }
@@ -290,14 +316,17 @@ public final class RecipeStateManager {
             SimpleCraftEditor.LOGGER.warn("Rejected authored recipe '{}': {}", id, rejection);
             return false;
         }
+        long validated = ScePerf.now();
         try {
             RecipeManager.fromJson(id, json);
         } catch (Exception e) {
             SimpleCraftEditor.LOGGER.warn("Rejected authored recipe '{}': {}", id, e.getMessage());
             return false;
+        } finally {
+            ScePerf.since("check a saved recipe is valid", validated);
         }
         state().putGenerated(id, json);
-        reapplyAndSync(server, server.getRecipeManager());
+        reapplyAndSync(server, server.getRecipeManager(), "save a recipe");
         SceDebug.log(SceDebug.Category.EDIT, "Saved '{}'; sources={}, generated={}",
                 id, rawJsonCache.size(), state().generated().size());
         return true;
@@ -389,7 +418,7 @@ public final class RecipeStateManager {
             return false;
         }
         state().putGenerated(target, raw.getAsJsonObject().deepCopy());
-        reapplyAndSync(server, server.getRecipeManager());
+        reapplyAndSync(server, server.getRecipeManager(), "clone a recipe");
         return true;
     }
 
@@ -397,12 +426,12 @@ public final class RecipeStateManager {
         if (!state().removeGenerated(id)) {
             return false;
         }
-        reapplyAndSync(server, server.getRecipeManager());
+        reapplyAndSync(server, server.getRecipeManager(), "delete a recipe");
         return true;
     }
 
     public void forceReapply(MinecraftServer server) {
-        reapplyAndSync(server, server.getRecipeManager());
+        reapplyAndSync(server, server.getRecipeManager(), "/sce reload");
     }
 
     /**
@@ -462,9 +491,13 @@ public final class RecipeStateManager {
      * the server, not to us. Recipe viewers pick the change up on the next {@code /reload}, which is the
      * behaviour the readme has always described.
      */
-    private void reapplyAndSync(MinecraftServer server, RecipeManager manager) {
+    private void reapplyAndSync(MinecraftServer server, RecipeManager manager, String trigger) {
+        // The trigger names the action a player took, so the timing report says which kind of edit was
+        // slow rather than only that applying one was.
+        ScePerf.Run perf = ScePerf.start("apply: " + trigger);
         RecipeState s = state();
         List<Recipe<?>> base = pureBase(manager);
+        perf.stage("work out the pack's own set");
         // Keyed by id rather than a plain list: replaceRecipes throws on a duplicate id and, because it
         // builds the new maps before assigning them, a throw leaves the live recipes completely untouched
         // — the edit would silently do nothing until someone reloaded. Keying makes that impossible.
@@ -476,6 +509,7 @@ public final class RecipeStateManager {
             }
             result.put(id, recipe);
         }
+        perf.stage("carry the pack's recipes over");
         // An id we injected is missing from the base, so if it was an edit of a pack recipe and that edit is
         // now gone, the pack's own version has to come back — otherwise deleting an edit would delete the
         // recipe it edited.
@@ -494,6 +528,7 @@ public final class RecipeStateManager {
                 restored++;
             }
         }
+        perf.stage("bring back originals we had edited");
         for (Map.Entry<ResourceLocation, JsonObject> entry : s.generated().entrySet()) {
             if (s.isGeneratedDisabled(entry.getKey())) {
                 continue;
@@ -503,6 +538,7 @@ public final class RecipeStateManager {
                 result.put(entry.getKey(), parsed);
             }
         }
+        perf.stage("parse our own recipes");
         SceDebug.log(SceDebug.Category.EDIT,
                 "Applying: {} pack recipes - {} disabled + {} of ours + {} restored originals = {} live",
                 base.size(), s.disabled().size(), s.generated().size(), restored, result.size());
@@ -512,16 +548,75 @@ public final class RecipeStateManager {
             // Never silently: if the recipe set cannot be swapped, the edit did not happen, and whoever
             // made it needs to see why rather than watch it appear to work and then not.
             SimpleCraftEditor.LOGGER.error("Could not apply the recipe edit to the running game", e);
+            perf.finish("failed");
             return;
         }
+        perf.stage("swap the live recipes");
+        RecipeOutputIndex.INSTANCE.invalidate();
         invalidateDerivedCaches(manager);
+        perf.stage("clear other mods' lookups");
         PolymorphRecipeSelection.clearRemembered(server);
-        server.getPlayerList().broadcastAll(new ClientboundUpdateRecipesPacket(manager.getRecipes()));
+        perf.stage("clear Polymorph's choice");
+        sendChangeToClients(server, s, result);
+        perf.stage("tell players what changed");
         RecipeStore.save(s);
+        perf.stage("write our file");
         reportApplied(manager, result.size());
+        perf.stage("check it landed");
         if (changeListener != null) {
             changeListener.accept(server);
         }
+        perf.finish("{} recipes live, {} of them ours, for {} player(s)",
+                result.size(), s.generated().size(), server.getPlayerList().getPlayerCount());
+    }
+
+    /**
+     * Tells every client which recipes this mod has changed, rather than resending the whole recipe set.
+     *
+     * <p>The vanilla packet is all-or-nothing, and a client receiving it rebuilds everything derived from
+     * the recipe list — measured at 1.2 to 1.9 seconds of frozen game in a 620-mod pack, for a refresh
+     * that does not even show the change until the next {@code /reload}. Nothing was gained for that
+     * second and a half, so it is not asked for any more.
+     *
+     * <p>Only the ids this mod has touched can differ from what a client was sent when the pack loaded,
+     * so those are the only ones worth describing: each one either has a definition now, or is gone.
+     * That is enough for a client to reach exactly the set the server has, and it is a few hundred bytes
+     * instead of every recipe in the pack.
+     */
+    private void sendChangeToClients(MinecraftServer server, RecipeState s,
+                                     Map<ResourceLocation, ?> live) {
+        if (patchSender == null) {
+            return;
+        }
+        Set<ResourceLocation> touched = new LinkedHashSet<>(injectedIds);
+        touched.addAll(s.disabled().keySet());
+        touched.addAll(s.generated().keySet());
+        // Whatever was mentioned before has to keep being mentioned until a client is told its final
+        // state, so that undoing an edit is as visible to them as making one.
+        touched.addAll(alreadyToldClients);
+        Map<ResourceLocation, JsonObject> changed = new LinkedHashMap<>();
+        Set<ResourceLocation> removed = new LinkedHashSet<>();
+        for (ResourceLocation id : touched) {
+            if (!live.containsKey(id)) {
+                removed.add(id);
+                continue;
+            }
+            JsonObject json = s.isGenerated(id) && !s.isGeneratedDisabled(id)
+                    ? s.generated().get(id)
+                    : rawJson(id);
+            if (json != null) {
+                changed.put(id, json);
+            }
+            // Live but with no JSON to point at: leave the client's own copy alone rather than remove a
+            // recipe that is still there.
+        }
+        alreadyToldClients.clear();
+        alreadyToldClients.addAll(changed.keySet());
+        alreadyToldClients.addAll(removed);
+        patchSender.send(server, changed, removed);
+        SceDebug.log(SceDebug.Category.NETWORK,
+                "Told the clients about {} changed recipe(s) and {} removed one(s), instead of all {}",
+                changed.size(), removed.size(), live.size());
     }
 
     /**
@@ -615,6 +710,9 @@ public final class RecipeStateManager {
 
     /** Re-parses a stored recipe, repairing an old cooking time; null (and logged) if it will not parse. */
     private Recipe<?> parse(ResourceLocation id, JsonObject json) {
+        // Counted rather than logged line by line: this runs once per stored recipe on every single edit,
+        // so the number worth knowing is the total it adds up to, not any one call.
+        long started = ScePerf.now();
         try {
             repairCookingTime(id, json);
             return RecipeManager.fromJson(id, json);
@@ -622,6 +720,8 @@ public final class RecipeStateManager {
             SimpleCraftEditor.LOGGER.warn("Skipping recipe '{}' that could not be parsed: {}", id, e.getMessage());
             state().markBroken(id);
             return null;
+        } finally {
+            ScePerf.since("parse one stored recipe", started);
         }
     }
 
@@ -654,6 +754,7 @@ public final class RecipeStateManager {
      */
     public void onServerStopped() {
         rawJsonCache.clear();
+        alreadyToldClients.clear();
         state = null; // re-read from the global config on next use
     }
 }

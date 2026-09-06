@@ -26,8 +26,22 @@ public class RecipeManagerScreen extends BaseSceScreen {
     private static final int LIST_TOP = 44;
 
     private final List<Row> rows = new ArrayList<>();
+    private final StatusLine status = new StatusLine();
     private int scroll;
     private int lastStateSig;
+
+    /**
+     * A message left here by the screen that just closed, shown once this one is up.
+     *
+     * <p>Static because it has to outlive the screen that wrote it: saving hands the confirmation over
+     * and then hands the screen over too, and the message has to survive that gap.
+     */
+    private static Component handover;
+
+    /** Leaves a message for the manager screen that is about to be opened. */
+    public static void showOnOpen(Component message) {
+        handover = message;
+    }
 
     private record Row(ResourceLocation id, ItemStack icon, boolean disabled, boolean flag, boolean genDisabled) {
     }
@@ -46,6 +60,10 @@ public class RecipeManagerScreen extends BaseSceScreen {
             rows.add(new Row(entry.id(), entry.display(), false, entry.flag(), entry.disabled()));
         }
         lastStateSig = stateSignature();
+        if (handover != null) {
+            status.set(handover);
+            handover = null;
+        }
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.new_recipe"), b ->
                 SceNetworking.sendOpenEditor("", 0)).bounds(width / 2 - 155, height - 30, 100, 20).build());
@@ -61,20 +79,37 @@ public class RecipeManagerScreen extends BaseSceScreen {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 60, 20).build());
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.restore"), b ->
-                        SceNetworking.sendSimple(SceNetworking.ENABLE, row.id()))
-                        .bounds(width / 2 + 72, y, 70, 20).build());
+                        request(SceNetworking.ENABLE, row.id(), "sce.status.requested_enable"))
+                        .bounds(width / 2 + 72, y, 70, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.restore"))).build());
             } else {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
                         SceNetworking.sendOpenEditor(row.id().toString(), -1)).bounds(width / 2 + 8, y, 44, 20).build());
                 ResourceLocation toggleChannel = row.genDisabled() ? SceNetworking.ENABLE : SceNetworking.DISABLE;
                 addRenderableWidget(Button.builder(Component.translatable(row.genDisabled() ? "sce.button.enable" : "sce.button.disable"), b ->
-                        SceNetworking.sendSimple(toggleChannel, row.id()))
-                        .bounds(width / 2 + 54, y, 60, 20).build());
+                        request(toggleChannel, row.id(),
+                                row.genDisabled() ? "sce.status.requested_enable" : "sce.status.requested_disable"))
+                        .bounds(width / 2 + 54, y, 60, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
+                                row.genDisabled() ? "sce.tooltip.enable" : "sce.tooltip.disable"))).build());
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.delete"), b ->
-                        SceNetworking.sendSimple(SceNetworking.DELETE, row.id()))
-                        .bounds(width / 2 + 116, y, 52, 20).build());
+                        request(SceNetworking.DELETE, row.id(), "sce.status.requested_delete"))
+                        .bounds(width / 2 + 116, y, 52, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.delete"))).build());
             }
         }
+    }
+
+    /**
+     * Asks the server for something and says on screen that it was asked for.
+     *
+     * <p>The answer arrives as a state update that redraws the list, which is the real confirmation; this
+     * is for the moment in between, so a click that is still travelling does not look like a click that
+     * did nothing.
+     */
+    private void request(ResourceLocation channel, ResourceLocation id, String messageKey) {
+        SceNetworking.sendSimple(channel, id);
+        status.set(Component.translatable(messageKey, id.toString()));
     }
 
     /**
@@ -105,6 +140,7 @@ public class RecipeManagerScreen extends BaseSceScreen {
         // foreground, unlike a container screen whose labels draw inside its own render).
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFF);
+        status.drawCentered(graphics, font, width / 2, height - 44);
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
         if (rows.isEmpty()) {

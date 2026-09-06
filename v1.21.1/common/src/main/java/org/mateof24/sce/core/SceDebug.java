@@ -45,7 +45,13 @@ public final class SceDebug {
         /** Permission changes as they are noticed and pushed. */
         PERMISSION,
         /** Client-side: the recipe key, load requests, field completion. */
-        CLIENT
+        CLIENT,
+        /**
+         * How long the mod's own work takes, stage by stage — see {@link ScePerf}. Added last on
+         * purpose: the active set travels to clients as a bitmask of ordinals, so an existing category
+         * must never change position.
+         */
+        PERF
     }
 
     private static final String PROPERTY = "sce.debug";
@@ -233,7 +239,9 @@ public final class SceDebug {
         StringBuilder sb = new StringBuilder("Recipe-relevant mods present:");
         for (String id : new String[]{
                 "kubejs", "crafttweaker", "almostunified", "item_obliterator", "polymorph", "modernfix",
-                "fastbench", "blueprint", "create", "jei", "emi", "architectury"}) {
+                "fastbench", "fastsuite", "fastfurnace", "fastrecipesearch", "blueprint", "create",
+                "cobblemon", "sophisticatedbackpacks", "sophisticatedcore",
+                "jei", "emi", "roughlyenoughitems", "architectury"}) {
             if (Platform.isModLoaded(id)) {
                 Mod mod = Platform.getMod(id);
                 sb.append("\n  - ").append(id).append(' ').append(mod != null ? mod.getVersion() : "?");

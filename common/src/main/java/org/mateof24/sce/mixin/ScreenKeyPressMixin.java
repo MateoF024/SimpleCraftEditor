@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class ScreenKeyPressMixin {
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void sce$loadHoveredRecipe(int keyCode, int scanCode, int modifiers, CallbackInfoReturnable<Boolean> cir) {
-        if (SceClient.tryLoadHoveredRecipe(keyCode, scanCode)) {
+        if (SceClient.tryLoadHoveredRecipe(keyCode, scanCode, modifiers)) {
             cir.setReturnValue(true);
         }
     }

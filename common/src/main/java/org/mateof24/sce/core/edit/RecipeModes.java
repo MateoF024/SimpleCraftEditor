@@ -109,6 +109,37 @@ public final class RecipeModes {
         return MODES[clamp(mode)].kind() == RecipeDraft.Kind.MECHANICAL_CRAFTING;
     }
 
+    /**
+     * Slots a type shows beside the recipe for something the recipe does not name item by item — the
+     * campfire pot's seasoning, whose contents the player chooses and whose rules the recipe sets.
+     */
+    public static int seasoningSlots(int mode) {
+        return 0; // Cobblemon 1.5.2, the version for this game, has no campfire pot
+    }
+
+    /**
+     * The mode a recipe written from nothing starts in: a shapeless crafting recipe, which is the one
+     * shape every other can be reached from without losing what has been filled in.
+     */
+    public static int shapelessMode() {
+        for (int i = 0; i < COUNT; i++) {
+            if (MODES[i].kind() == RecipeDraft.Kind.CRAFTING_SHAPELESS) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /** Whether a mode is drawn on a three-wide grid rather than a single ingredient slot. */
+    public static boolean usesGrid(int mode) {
+        return isCrafting(mode) || isCreate(mode);
+    }
+
+    /** Whether a mode has a row of its own rules above the tag row, with a caption over it. */
+    public static boolean hasRuleRow(int mode) {
+        return isCrafting(mode);
+    }
+
     /** Sequenced assembly is edited on a dedicated screen rather than the shared slot layout. */
     public static boolean isSequencedAssembly(int mode) {
         return MODES[clamp(mode)].kind() == RecipeDraft.Kind.SEQUENCED_ASSEMBLY;

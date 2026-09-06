@@ -14,10 +14,13 @@ import org.mateof24.sce.core.edit.RecipeModes;
  * left the sparse ones with a hole above the inventory and a grid pushed off-centre by a column of fields
  * that were not there.
  *
- * <p>Two rules produce the layout. Vertically, the rows in use are stacked with an even gap and the whole
- * block is centred in the free band, so a type with fewer rows sits balanced instead of hugging the top.
- * Horizontally, the grid/arrow/result cluster is centred in whatever width is left once a side column is
- * reserved — which means it is centred on the panel exactly when nothing sits beside it.
+ * <p>Two rules produce the layout. Vertically, the rows under the recipe hang from the bottom of the free
+ * band and the recipe cluster is centred in what is left between the id row and the first of them. Hanging them from the bottom is what
+ * keeps the tag row in one place: what changes between a smelting recipe and a shaped one is the recipe
+ * above it, not the row itself, and a row that jumps around because the thing above it got shorter reads
+ * as a different screen rather than the same one. Horizontally, the grid/arrow/result cluster is centred
+ * in whatever width is left once a side column is reserved — which means it is centred on the panel
+ * exactly when nothing sits beside it.
  *
  * <p>Both the menu and the screen build one of these: slot positions are decided server-side while the
  * widgets around them are client-side, and they have to agree.
@@ -30,14 +33,18 @@ public final class EditorLayout {
     public static final int SLOT = 18;
     /** Height of a row of text boxes and buttons. */
     public static final int ROW = 16;
+    /** Height a caption above a row takes: one line of text and a pixel of air under it. */
+    public static final int LABEL_LINE = 10;
     public static final int ARROW_WIDTH = 22;
 
     public static final int INVENTORY_Y = 158;
     public static final int HOTBAR_Y = 218;
     public static final int BUTTON_ROW_Y = 238;
 
+    /** The recipe id and its Load button, the one row above the band that never moves. */
+    public static final int ID_ROW_Y = 22;
     /** Free band between the id row and the player inventory, which every type divides up. */
-    private static final int BAND_TOP = 42;
+    private static final int BAND_TOP = ID_ROW_Y + ROW;
     private static final int BAND_BOTTOM = 152;
     /** Gap between rows: wide enough to read as separate, tight enough that Create's four rows fit. */
     private static final int MIN_ROW_GAP = 6;
@@ -60,6 +67,12 @@ public final class EditorLayout {
 
     /** Row holding the tag field and its buttons; every type has one. */
     public final int tagRowY;
+
+    /**
+     * The row holding a type's own rule buttons, or -1 when it has none. Their captions are drawn in the
+     * {@link #LABEL_LINE} directly above, which this row reserves.
+     */
+    public final int ruleRowY;
     /** Create's chance/time/heat row, or -1 for types without one. */
     public final int extraRowY;
     /** Create's fluid row, or -1 for types that take no fluids. */
@@ -72,8 +85,22 @@ public final class EditorLayout {
     /** Mechanical crafting's mirrored toggle, or -1 for every other type. */
     public final int mirroredY;
 
+    /**
+     * The row of seasoning slots, or -1 for a type that has none: beside the result and level with it,
+     * where the campfire pot itself puts them, so the editor reads as the block it is editing. Its
+     * caption sits in the {@link #LABEL_LINE} above and its button in the row below.
+     */
+    public final int seasoningX;
+    public final int seasoningY;
+    public final int seasoningCount;
+
+    /** Row under the seasoning slots, holding the button that opens their editor. */
+    public int seasoningButtonY() {
+        return seasoningY + SLOT + 4;
+    }
+
     public EditorLayout(int mode) {
-        boolean crafting = RecipeModes.isCrafting(mode);
+        boolean ruleRow = RecipeModes.hasRuleRow(mode);
         boolean cooking = RecipeModes.isCooking(mode);
         boolean create = RecipeModes.isCreate(mode);
         boolean mechanical = RecipeModes.isMechanicalCrafting(mode);
@@ -81,33 +108,45 @@ public final class EditorLayout {
         int inputs = RecipeModes.inputCount(mode);
         int outputs = RecipeModes.outputCount(mode);
 
-        gridColumns = mechanical ? RecipeDraft.MECHANICAL_SIZE : ((crafting || create) ? 3 : 1);
+        gridColumns = mechanical ? RecipeDraft.MECHANICAL_SIZE : (RecipeModes.usesGrid(mode) ? 3 : 1);
         gridRows = ceilDiv(inputs, gridColumns);
         // Create is the only type with enough results to want a second column of them.
         outputColumns = create ? 2 : 1;
         int outputRows = ceilDiv(outputs, outputColumns);
 
-        // ---- vertical: stack the rows this type uses, then centre the block in the free band
+        // ---- vertical: hang the rows from the bottom of the band, then centre the recipe above them
         int recipeHeight = Math.max(gridRows, outputRows) * SLOT;
-        int rowCount = 2 + (create ? 2 : 0); // recipe + tag, plus Create's amount and fluid rows
-        int stacked = recipeHeight + ROW + (create ? 2 * ROW : 0);
+        // Rows between the recipe and the tag row: Create's amount and fluid rows, or a type's own rule
+        // row, which is taller than a plain one because it carries a caption.
+        int middleRows = (create ? 2 : 0) + (ruleRow ? 1 : 0);
+        int middleHeight = (create ? 2 * ROW : 0) + (ruleRow ? ROW + LABEL_LINE : 0);
+        int stacked = recipeHeight + middleHeight + ROW;
         int band = BAND_BOTTOM - BAND_TOP;
-        int gap = clamp((band - stacked) / (rowCount - 1), MIN_ROW_GAP, MAX_ROW_GAP);
-        int blockHeight = stacked + gap * (rowCount - 1);
-        int cursor = BAND_TOP + Math.max(0, (band - blockHeight) / 2);
+        int gap = clamp((band - stacked) / (middleRows + 1), MIN_ROW_GAP, MAX_ROW_GAP);
 
-        int recipeY = cursor;
-        cursor += recipeHeight + gap;
+        // Placed from the bottom up: the tag row's home is the foot of the band for every type alike.
+        tagRowY = BAND_BOTTOM - ROW;
+        int cursor = tagRowY;
+        if (ruleRow) {
+            ruleRowY = cursor - gap - ROW;
+            cursor = ruleRowY - LABEL_LINE;
+        } else {
+            ruleRowY = -1;
+        }
         if (create) {
-            extraRowY = cursor;
-            cursor += ROW + gap;
-            fluidRowY = cursor;
-            cursor += ROW + gap;
+            fluidRowY = cursor - gap - ROW;
+            extraRowY = fluidRowY - gap - ROW;
+            cursor = extraRowY;
         } else {
             extraRowY = -1;
             fluidRowY = -1;
         }
-        tagRowY = cursor;
+        // Centred between the id row above and the first thing below, measured to the pixel each of them
+        // actually paints: a caption is a line of text with a pixel of air under it, not a full row, and
+        // centring against the row would leave the recipe visibly closer to the id field than to what
+        // follows it.
+        int belowTop = ruleRow ? ruleRowY - LABEL_LINE + 1 : (create ? extraRowY : tagRowY);
+        int recipeY = BAND_TOP + Math.max(0, (belowTop - BAND_TOP - recipeHeight) / 2);
 
         // A short grid and a single result slot both centre on the recipe row rather than hanging off its
         // top, which is what keeps the result beside the middle of a 5x5 or 3x3 grid.
@@ -115,10 +154,14 @@ public final class EditorLayout {
         outputY = recipeY + (recipeHeight - outputRows * SLOT) / 2;
 
         // ---- horizontal: centre grid → arrow → result in the width left over
-        int reserved = cooking ? COOKING_RESERVE : 0;
-        int bandWidth = WIDTH - 2 * PADDING - reserved;
+        seasoningCount = RecipeModes.seasoningSlots(mode);
+        int seasoningWidth = seasoningCount * SLOT;
+        int bandWidth = WIDTH - 2 * PADDING - (cooking ? COOKING_RESERVE : 0);
         int clusterWidth = gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP + outputColumns * SLOT;
-        gridX = PADDING + Math.max(0, (bandWidth - clusterWidth) / 2);
+        // The seasoning column is part of the recipe, not something parked beside it, so what gets
+        // centred is the two of them together.
+        int wholeWidth = clusterWidth + (seasoningCount > 0 ? CLUSTER_GAP + seasoningWidth : 0);
+        gridX = PADDING + Math.max(0, (bandWidth - wholeWidth) / 2);
         outputX = gridX + gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP;
 
         if (cooking) {
@@ -131,6 +174,15 @@ public final class EditorLayout {
             expY = -1;
             sideTimeY = -1;
         }
+        if (seasoningCount > 0) {
+            // Level with the result: what a player adds there lands on the result, not on the grid.
+            seasoningX = gridX + clusterWidth + CLUSTER_GAP;
+            seasoningY = outputY;
+        } else {
+            seasoningX = -1;
+            seasoningY = -1;
+        }
+
         // The toggle goes under the result slot, in the space a 5x5 grid leaves to its right.
         mirroredY = mechanical ? outputY + 40 : -1;
     }

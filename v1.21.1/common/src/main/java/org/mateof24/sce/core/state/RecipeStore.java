@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import dev.architectury.platform.Platform;
 import net.minecraft.resources.ResourceLocation;
 import org.mateof24.sce.SimpleCraftEditor;
+import org.mateof24.sce.core.ScePerf;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -34,9 +35,11 @@ public final class RecipeStore {
     }
 
     public static RecipeState load() {
+        ScePerf.Run perf = ScePerf.start("read our recipe file");
         RecipeState state = new RecipeState();
         Path path = file();
         if (!Files.exists(path)) {
+            perf.finish("no file yet");
             return state;
         }
         try (Reader reader = Files.newBufferedReader(path)) {
@@ -56,10 +59,12 @@ public final class RecipeStore {
         } catch (Exception e) {
             SimpleCraftEditor.LOGGER.error("Failed to read recipe state from {}", path, e);
         }
+        perf.finish("{} disabled, {} of ours", state.disabled().size(), state.generated().size());
         return state;
     }
 
     public static void save(RecipeState state) {
+        ScePerf.Run perf = ScePerf.start("write our recipe file");
         Path path = file();
         try {
             Files.createDirectories(path.getParent());
@@ -81,11 +86,16 @@ public final class RecipeStore {
             state.disabledGenerated().forEach(id -> disabledGenerated.add(id.toString()));
             root.add("disabled_generated", disabledGenerated);
 
+            perf.stage("build the json");
             try (Writer writer = Files.newBufferedWriter(path)) {
                 GSON.toJson(root, writer);
             }
+            perf.stage("write to disk");
+            perf.finish("{} disabled, {} of ours, {} bytes",
+                    state.disabled().size(), state.generated().size(), Files.size(path));
         } catch (IOException e) {
             SimpleCraftEditor.LOGGER.error("Failed to write recipe state to {}", path, e);
+            perf.finish("failed");
         }
     }
 

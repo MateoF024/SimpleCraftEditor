@@ -25,6 +25,9 @@
     ],
     "emi": [
       "org.mateof24.sce.client.emi.SceEmiPlugin"
+    ],
+    "rei_client": [
+      "org.mateof24.sce.client.rei.SceReiPlugin"
     ]
   },
   "mixins": [

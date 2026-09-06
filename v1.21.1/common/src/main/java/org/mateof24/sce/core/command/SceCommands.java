@@ -12,7 +12,10 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.core.registries.BuiltInRegistries;
 import org.mateof24.sce.core.SceDebug;
+import org.mateof24.sce.core.ScePerf;
+import org.mateof24.sce.core.state.RecipeOutputIndex;
 import org.mateof24.sce.core.state.RecipeState;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.net.SceNetworking;
@@ -94,6 +97,13 @@ public final class SceCommands {
                             org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
                             return 1;
                         })));
+        // The direct answer to "the key does not find a recipe I know exists": every recipe that makes an
+        // item, whether it makes it as its main result or as one of its other outputs, and whether it can
+        // be edited. A machine recipe usually lists the interesting item second or third.
+        debug.then(Commands.literal("produces")
+                .then(Commands.argument("item", ResourceLocationArgument.id())
+                        .suggests(suggestItems())
+                        .executes(SceCommands::debugProduces)));
         debug.then(Commands.literal("verify").executes(context -> {
             String report = RecipeStateManager.INSTANCE.verifyGeneratedInManager(context.getSource().getServer());
             for (String line : report.split("\n")) {
@@ -105,11 +115,58 @@ public final class SceCommands {
         debug.then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
                 .executes(context -> setDebug(context, null)));
         for (SceDebug.Category category : SceDebug.Category.values()) {
-            debug.then(Commands.literal(category.name().toLowerCase(java.util.Locale.ROOT))
-                    .then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
-                            .executes(context -> setDebug(context, category))));
+            com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> literal =
+                    Commands.literal(category.name().toLowerCase(java.util.Locale.ROOT))
+                            .then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                    .executes(context -> setDebug(context, category)));
+            if (category == SceDebug.Category.PERF) {
+                // Timing is the one category that produces a report worth reading on its own, so a bare
+                // "/sce debug perf" prints it. Turning it on and off still works like every other area.
+                literal.executes(SceCommands::perfReport)
+                        .then(Commands.literal("reset").executes(SceCommands::perfReset));
+            }
+            debug.then(literal);
         }
         return debug;
+    }
+
+    /**
+     * Prints everything the stopwatch has recorded. Sent to whoever ran it and written to the log as well,
+     * because the log is what ends up attached to a bug report.
+     */
+    private static int perfReport(CommandContext<CommandSourceStack> context) {
+        String report = ScePerf.report();
+        for (String line : report.split("\n")) {
+            context.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG/PERF] {}", report);
+        return 1;
+    }
+
+    /** Clears the measurements, so the next thing tried is timed on its own rather than mixed with the last. */
+    private static int perfReset(CommandContext<CommandSourceStack> context) {
+        ScePerf.reset();
+        context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.perf_reset"), true);
+        return 1;
+    }
+
+    private static int debugProduces(CommandContext<CommandSourceStack> context) {
+        ResourceLocation itemId = ResourceLocationArgument.getId(context, "item");
+        if (!BuiltInRegistries.ITEM.containsKey(itemId)) {
+            context.getSource().sendFailure(Component.literal("No such item: " + itemId));
+            return 0;
+        }
+        String report = RecipeOutputIndex.INSTANCE.describe(
+                context.getSource().getServer(), BuiltInRegistries.ITEM.get(itemId));
+        for (String line : report.split("\n")) {
+            context.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
+        return 1;
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestItems() {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(BuiltInRegistries.ITEM.keySet(), builder);
     }
 
     private static int setDebug(CommandContext<CommandSourceStack> context, SceDebug.Category category) {

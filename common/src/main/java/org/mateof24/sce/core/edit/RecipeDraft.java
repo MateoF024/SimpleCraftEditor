@@ -1,9 +1,12 @@
 package org.mateof24.sce.core.edit;
 
+import com.google.gson.JsonElement;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Editable, loader-agnostic representation of a recipe under construction in the editor UI. Converted
@@ -66,6 +69,34 @@ public final class RecipeDraft {
     public ResourceLocation id;
     public String group = "";
 
+    /**
+     * The {@code type} this recipe was read with, kept so that editing one belonging to another mod does
+     * not quietly turn it into a plain vanilla recipe.
+     *
+     * <p>Mods commonly write a recipe that is a vanilla shaped or shapeless recipe in every respect
+     * except that its own class does something extra when the result is assembled — Sophisticated
+     * Backpacks copies the old backpack's contents onto the new one that way. Rewriting such a recipe as
+     * {@code minecraft:crafting_shaped} would keep the ingredients and lose the behaviour, and the loss
+     * is silent: the recipe still crafts, it just eats what was inside. Writing the type back is what
+     * keeps the mod's own half of the recipe alive.
+     *
+     * <p>Empty when the editor wrote the type itself, and deliberately dropped when the type button is
+     * used, because that re-opens the editor without the stored recipe — which is the way to say
+     * "make this an ordinary recipe".
+     */
+    public String sourceType = "";
+
+    /**
+     * Top-level JSON this editor does not model, carried through untouched.
+     *
+     * <p>A recipe is not only the parts an editor draws. Sophisticated Backpacks and Create attach
+     * {@code conditions} that decide whether the recipe loads at all; Cobblemon's cooking pot adds its
+     * own category and seasoning fields. None of that is ours to understand, and all of it would be lost
+     * by writing back only what the screen shows. Kept in order so a re-saved file still reads like the
+     * one it came from.
+     */
+    public final Map<String, JsonElement> extras = new LinkedHashMap<>();
+
     // Shaped: a width*height row-major grid. Shapeless: an unordered input list. Cooking/stonecutting: inputs[0].
     // Mechanical crafting is shaped too, but on a grid larger than 3x3.
     public int width = 3;
@@ -74,6 +105,29 @@ public final class RecipeDraft {
 
     /** Mechanical crafting only: whether Create should also match the pattern mirrored. */
     public boolean acceptMirrored;
+
+    /**
+     * Crafting only: where the crafted result's data comes from — one of the names of
+     * {@code InheritingCraftingRecipe.Carry}, or {@code auto} to let the editor decide from what was put
+     * in the slots. {@code none} is an ordinary recipe that produces a fresh result.
+     */
+    public String carry = "auto";
+
+    /**
+     * Crafting only: whether the data on the ingredients is part of the match — {@code auto},
+     * {@code ignore} or {@code require}. Requiring it is what makes a recipe work only with the chest
+     * that is actually called "Pepito" rather than with any chest at all.
+     */
+    public String matchData = "auto";
+
+    /**
+     * The stacks the grid must contain, each written as the text of its own save tag so that every kind
+     * of data travels in one field. Filled in from what the author physically placed in the slots.
+     */
+    public final List<String> requiredStacks = new ArrayList<>();
+
+    /** The result exactly as the author left it, in the same text form. Empty when they left it plain. */
+    public String resultStack = "";
 
     // Sequenced assembly: one base ingredient (inputs[0]) is carried through an ordered list of processing
     // steps, each of which is itself a recipe, looping a number of times before yielding the results.

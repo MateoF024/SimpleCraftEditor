@@ -26,7 +26,7 @@ public class RawRecipeScreen extends Screen {
     private final ResourceLocation id;
     private final String initialJson;
     private MultiLineEditBox editor;
-    private Component status = Component.empty();
+    private final StatusLine status = new StatusLine();
 
     public RawRecipeScreen(ResourceLocation id, String json) {
         super(Component.translatable("sce.raw.title", id.toString()));
@@ -61,11 +61,27 @@ public class RawRecipeScreen extends Screen {
         try {
             JsonParser.parseString(text).getAsJsonObject();
         } catch (Exception e) {
-            status = Component.translatable("sce.status.invalid_json");
+            status.set(Component.translatable("sce.status.invalid_json"));
             return;
         }
         SceNetworking.sendSave(id, text);
-        status = Component.translatable("sce.status.sent", id.toString());
+        status.set(Component.translatable("sce.status.sent", id.toString()));
+    }
+
+    /**
+     * Called from the network layer with the server's verdict on a save request.
+     *
+     * <p>A save that worked goes back to the manager and says so there: that is where the recipe just
+     * saved can be seen in the list, so the confirmation and the thing it confirms are on the same
+     * screen. A save that failed stays here, because the form that has to be fixed is here.
+     */
+    public void onSaveResult(ResourceLocation saved, boolean ok) {
+        if (ok) {
+            RecipeManagerScreen.showOnOpen(Component.translatable("sce.status.saved", saved.toString()));
+            minecraft.setScreen(new RecipeManagerScreen());
+            return;
+        }
+        status.set(Component.translatable("sce.status.save_failed", saved.toString()));
     }
 
     @Override
@@ -74,9 +90,7 @@ public class RawRecipeScreen extends Screen {
         // our foreground before it would get smeared by that blur.
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
-        if (!status.getString().isEmpty()) {
-            graphics.drawCenteredString(font, status, width / 2, height - 58, 0xE0E070);
-        }
+        status.drawCentered(graphics, font, width / 2, height - 58);
     }
 
     @Override

@@ -29,7 +29,7 @@ public final class FluidSprites {
 
     /**
      * Resolves what a slot's fluid value actually points at. A tag names a set rather than one fluid, so
-     * its first member stands in for it — the same compromise a viewer makes before it starts cycling.
+     * it is walked through the same way an item tag is, by {@link TagCycle}.
      */
     public static Fluid resolve(IngredientValue value) {
         if (value == null || !value.isFluid() || value.id() == null) {
@@ -38,10 +38,7 @@ public final class FluidSprites {
         if (!value.isFluidTag()) {
             return BuiltInRegistries.FLUID.get(value.id());
         }
-        return BuiltInRegistries.FLUID.getTag(TagKey.create(Registries.FLUID, value.id()))
-                .filter(holders -> holders.size() > 0)
-                .map(holders -> holders.get(0).value())
-                .orElse(Fluids.EMPTY);
+        return TagCycle.fluid(value.id());
     }
 
     /** The registry id of a fluid, for turning something dragged in from a viewer back into a value. */

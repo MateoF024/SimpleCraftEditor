@@ -16,19 +16,26 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import org.jetbrains.annotations.Nullable;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.core.SceDebug;
+import org.mateof24.sce.core.ScePerf;
+import org.mateof24.sce.core.edit.IngredientValue;
 import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
+import org.mateof24.sce.core.state.RecipeOutputIndex;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Client/server messaging for the editor. C2S messages request edits (guarded by operator permission);
@@ -41,6 +48,7 @@ public final class SceNetworking {
     public static final ResourceLocation ENABLE = channel("enable");
     public static final ResourceLocation DELETE = channel("delete");
     public static final ResourceLocation REQUEST_JSON = channel("request_json");
+    public static final ResourceLocation REQUEST_RECIPES = channel("request_recipes");
     public static final ResourceLocation OPEN_EDITOR = channel("open_editor");
     public static final ResourceLocation SET_SLOT = channel("set_slot");
     public static final ResourceLocation SYNC = channel("sync");
@@ -48,6 +56,8 @@ public final class SceNetworking {
     public static final ResourceLocation OPEN_RAW = channel("open_raw");
     public static final ResourceLocation OPEN_SEQUENCE = channel("open_sequence");
     public static final ResourceLocation SAVE_RESULT = channel("save_result");
+    public static final ResourceLocation RECIPES_FOR = channel("recipes_for");
+    public static final ResourceLocation RECIPE_PATCH = channel("recipe_patch");
 
     private static final int MAX_JSON = 1024 * 1024;
 
@@ -69,6 +79,7 @@ public final class SceNetworking {
 
     public static void init() {
         RecipeStateManager.INSTANCE.setChangeListener(SceNetworking::syncToAll);
+        RecipeStateManager.INSTANCE.setPatchSender(SceNetworking::sendRecipePatch);
 
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, SAVE, (buf, context) -> {
             ResourceLocation id = buf.readResourceLocation();
@@ -101,10 +112,15 @@ public final class SceNetworking {
             ResourceLocation id = buf.readResourceLocation();
             context.queue(() -> handleRequestJson(context.getPlayer(), id));
         });
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, REQUEST_RECIPES, (buf, context) -> {
+            ResourceLocation itemId = buf.readResourceLocation();
+            context.queue(() -> handleRequestRecipes(context.getPlayer(), itemId));
+        });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, OPEN_EDITOR, (buf, context) -> {
             String idString = buf.readUtf();
             int mode = buf.readVarInt();
-            context.queue(() -> handleOpenEditor(context.getPlayer(), idString, mode));
+            String seed = buf.readUtf();
+            context.queue(() -> handleOpenEditor(context.getPlayer(), idString, mode, seed));
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, SET_SLOT, (buf, context) -> {
             int slotId = buf.readVarInt();
@@ -122,18 +138,24 @@ public final class SceNetworking {
             deny(sender);
             return;
         }
+        ScePerf.Run perf = ScePerf.start("save from the editor");
         JsonObject parsed;
         try {
             parsed = JsonParser.parseString(json).getAsJsonObject();
         } catch (Exception e) {
             player.sendSystemMessage(Component.translatable("sce.msg.parse_fail"));
             sendSaveResult(player, id, false);
+            perf.finish("the json would not parse");
             return;
         }
+        perf.stage("read the json");
         boolean ok = RecipeStateManager.INSTANCE.saveGenerated(player.getServer(), id, parsed);
+        perf.stage("store it and apply it");
         player.sendSystemMessage(Component.translatable(
                 ok ? "sce.msg.saved" : "sce.msg.rejected", id.toString()));
         sendSaveResult(player, id, ok);
+        perf.stage("answer the player");
+        perf.finish("{}, {} characters of json", ok ? "saved" : "rejected", json.length());
     }
 
     private static void sendSaveResult(ServerPlayer player, ResourceLocation id, boolean ok) {
@@ -147,18 +169,92 @@ public final class SceNetworking {
         if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             return;
         }
+        long started = ScePerf.now();
         JsonObject json = RecipeStateManager.INSTANCE.editorJson(id);
         FriendlyByteBuf buf = buffer();
         buf.writeResourceLocation(id);
         buf.writeUtf(json == null ? "" : json.toString(), MAX_JSON);
         NetworkManager.sendToPlayer(player, RECIPE_JSON, buf);
+        ScePerf.since("answer one request for a recipe's json", started);
     }
 
-    private static void handleOpenEditor(Player sender, String idString, int requestedMode) {
+    /**
+     * Answers "which recipes produce this item". The search lives here rather than on the client for two
+     * reasons: the server is the only side that can see every output a recipe declares, including the ones
+     * that are not its main result, and from 1.21.11 on the client is not sent the recipes at all.
+     */
+    /**
+     * Sends the recipes this mod has changed to every player, instead of the whole recipe set.
+     *
+     * <p>See {@code RecipeStateManager#sendChangeToClients} for the measurement behind this: receiving
+     * the vanilla update packet makes a recipe viewer rebuild its entire index, which was 1.2 to 1.9
+     * seconds of frozen game per edit in a 620-mod pack and did not even show the change until the next
+     * {@code /reload}. This carries only what actually differs.
+     */
+    private static void sendRecipePatch(MinecraftServer server,
+                                        Map<ResourceLocation, JsonObject> changed,
+                                        Set<ResourceLocation> removed) {
+        FriendlyByteBuf buf = buffer();
+        if (changed.isEmpty() && removed.isEmpty()) {
+            return;
+        }
+        buf.writeVarInt(changed.size());
+        for (Map.Entry<ResourceLocation, JsonObject> entry : changed.entrySet()) {
+            buf.writeResourceLocation(entry.getKey());
+            buf.writeUtf(entry.getValue().toString(), MAX_JSON);
+        }
+        buf.writeVarInt(removed.size());
+        for (ResourceLocation id : removed) {
+            buf.writeResourceLocation(id);
+        }
+        NetworkManager.sendToPlayers(server.getPlayerList().getPlayers(), RECIPE_PATCH, buf);
+    }
+
+    private static void handleRequestRecipes(Player sender, ResourceLocation itemId) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
+            return;
+        }
+        List<ResourceLocation> recipes = List.of();
+        Item item = BuiltInRegistries.ITEM.containsKey(itemId) ? BuiltInRegistries.ITEM.get(itemId) : null;
+        if (item != null) {
+            recipes = RecipeOutputIndex.INSTANCE.recipesProducing(player.getServer(), item);
+        }
+        FriendlyByteBuf buf = buffer();
+        buf.writeResourceLocation(itemId);
+        buf.writeVarInt(recipes.size());
+        for (ResourceLocation id : recipes) {
+            buf.writeResourceLocation(id);
+        }
+        NetworkManager.sendToPlayer(player, RECIPES_FOR, buf);
+    }
+
+    /**
+     * A shapeless recipe with nothing in it that makes the given item, as JSON.
+     *
+     * <p>Built through the ordinary writer rather than by hand so it comes out in whatever shape this
+     * version of the game reads, and so the editor opens it down the same path as any other recipe.
+     */
+    private static String blankRecipeFor(ResourceLocation id, String itemId) {
+        ResourceLocation item = ResourceLocation.tryParse(itemId);
+        if (item == null || !BuiltInRegistries.ITEM.containsKey(item)) {
+            return "";
+        }
+        RecipeDraft draft = RecipeDraft.blank(RecipeDraft.Kind.CRAFTING_SHAPELESS);
+        draft.id = id;
+        draft.result = IngredientValue.item(item);
+        draft.resultCount = 1;
+        // Left off deliberately: a blank recipe has no data to carry, and on auto the writer would give
+        // it this mod's own inheriting type for nothing.
+        draft.carry = "none";
+        return RecipeCompiler.toJson(draft).toString();
+    }
+
+    private static void handleOpenEditor(Player sender, String idString, int requestedMode, String seedResult) {
         if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
             deny(sender);
             return;
         }
+        ScePerf.Run perf = ScePerf.start("open the editor");
         ResourceLocation editId = idString.isEmpty() ? null : ResourceLocation.tryParse(idString);
         String editJson = "";
         int mode = Math.max(0, requestedMode);
@@ -170,26 +266,39 @@ public final class SceNetworking {
             // vanish. Saying so is more use than an editor that appears to work.
             if (!RecipeStateManager.INSTANCE.isEditable(editId)) {
                 player.sendSystemMessage(Component.translatable("sce.msg.not_editable", editId.toString()));
+                perf.finish("refused, a script wrote it");
                 return;
             }
+            perf.stage("check it can be edited");
             JsonObject json = RecipeStateManager.INSTANCE.editorJson(editId);
+            perf.stage("find its json");
             if (json != null) {
                 editJson = json.toString();
                 RecipeDraft draft = RecipeCompiler.fromJson(editId, json);
+                perf.stage("work out its type");
                 if (draft == null) {
                     // No typed editor for this recipe type: fall back to the raw JSON editor.
                     sendOpenRaw(player, editId, editJson);
+                    perf.finish("no typed editor for it, sent the raw json one");
                     return;
                 }
                 mode = RecipeModes.indexOf(draft);
             }
         }
+        if (editJson.isEmpty() && !seedResult.isEmpty()) {
+            // Nothing was loaded and an item was named: start the editor on a recipe that makes it.
+            editJson = blankRecipeFor(editId, seedResult);
+            perf.stage("write a blank recipe for the item");
+        }
         mode = RecipeModes.sanitize(mode);
         if (RecipeModes.isSequencedAssembly(mode)) {
             sendOpenSequence(player, editId, editJson);
+            perf.finish("sequence editor");
             return;
         }
         MenuRegistry.openExtendedMenu(player, new EditorMenuProvider(editId, editJson, mode));
+        perf.stage("open the screen");
+        perf.finish("type {}, {} characters of json", mode, editJson.length());
     }
 
     /** Sequenced assembly is edited on its own screen, so it is handed over instead of a container menu. */
@@ -271,6 +380,7 @@ public final class SceNetworking {
         if (server.getTickCount() % 20 != 0) {
             return;
         }
+        long started = ScePerf.now();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             boolean allowed = mayEdit(player);
             Boolean last = lastPermission.get(player.getUUID());
@@ -279,12 +389,18 @@ public final class SceNetworking {
                 syncTo(player);
             }
         }
+        ScePerf.since("check everyone's permission (once a second)", started);
     }
 
     public static void syncToAll(MinecraftServer server) {
+        ScePerf.Run perf = ScePerf.start("sync the editor to every player");
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             syncTo(player);
         }
+        RecipeStateManager manager = RecipeStateManager.INSTANCE;
+        perf.finish("{} player(s), {} disabled and {} of ours to describe",
+                server.getPlayerList().getPlayerCount(),
+                manager.state().disabled().size(), manager.state().generated().size());
     }
 
     /** Pushes the current debug mask to every client, so their screens log under the same categories. */
@@ -297,6 +413,7 @@ public final class SceNetworking {
         if (server == null) {
             return;
         }
+        long started = ScePerf.now();
         RecipeStateManager manager = RecipeStateManager.INSTANCE;
         FriendlyByteBuf buf = buffer();
 
@@ -323,17 +440,22 @@ public final class SceNetworking {
         }
 
         NetworkManager.sendToPlayer(player, SYNC, buf);
+        // One player at a time: the interesting number is what this adds up to across a full server.
+        ScePerf.since("build and send one player's editor state", started);
     }
 
     private static ItemStack disabledDisplay(MinecraftServer server, ResourceLocation id, JsonObject snapshot) {
         if (snapshot == null) {
             return ItemStack.EMPTY;
         }
+        long started = ScePerf.now();
         try {
             Recipe<?> recipe = RecipeManager.fromJson(id, snapshot);
             return recipe.getResultItem(server.registryAccess());
         } catch (Exception e) {
             return ItemStack.EMPTY;
+        } finally {
+            ScePerf.since("work out one disabled recipe's icon", started);
         }
     }
 
@@ -352,11 +474,24 @@ public final class SceNetworking {
         NetworkManager.sendToServer(channel, buf);
     }
 
+    /** Asks the server which recipes produce an item. The answer comes back on {@link #RECIPES_FOR}. */
+    public static void sendRequestRecipes(ResourceLocation itemId) {
+        FriendlyByteBuf buf = buffer();
+        buf.writeResourceLocation(itemId);
+        NetworkManager.sendToServer(REQUEST_RECIPES, buf);
+    }
+
     /** Asks the server to open the editor menu; empty id means a fresh recipe, mode -1 means "derive from recipe". */
     public static void sendOpenEditor(String idString, int mode) {
+        sendOpenEditor(idString, mode, null);
+    }
+
+    /** As above, plus the item a brand-new recipe should start out making. */
+    public static void sendOpenEditor(String idString, int mode, ResourceLocation seedResult) {
         FriendlyByteBuf buf = buffer();
         buf.writeUtf(idString);
         buf.writeVarInt(mode);
+        buf.writeUtf(seedResult == null ? "" : seedResult.toString());
         NetworkManager.sendToServer(OPEN_EDITOR, buf);
     }
 
