@@ -94,6 +94,13 @@ public final class RecipeStateManager {
      */
     private HolderLookup.Provider registries;
     private Consumer<MinecraftServer> changeListener;
+    /**
+     * Changes every time the live recipe set is replaced, so a client can tell whether the list of recipe
+     * ids it holds is still the one the server has. Started from the clock rather than from zero: two
+     * different servers would both begin at 1, and a client that moved from one to the other would think
+     * a list it had from the first was current on the second.
+     */
+    private long recipeEpoch = System.nanoTime();
 
     private RecipeStateManager() {
     }
@@ -166,7 +173,25 @@ public final class RecipeStateManager {
                 incoming.values().size(), removed, added, live.size());
         perf.finish("{} recipes in the pack, {} removed, {} added",
                 incoming.values().size(), removed, added);
+        recipeEpoch++;
         return RecipeMap.create(live.values());
+    }
+
+    /**
+     * Which version of the recipe set is live. Any client holding a list of recipe ids can compare this
+     * with the one its list came from and know whether it is still good.
+     */
+    public long recipeEpoch() {
+        return recipeEpoch;
+    }
+
+    /** Every recipe id the server has, for the editor's id field to complete against. */
+    public List<Identifier> liveRecipeIds(MinecraftServer server) {
+        List<Identifier> ids = new ArrayList<>();
+        for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes()) {
+            ids.add(holder.id().identifier());
+        }
+        return ids;
     }
 
     /**
@@ -572,6 +597,7 @@ public final class RecipeStateManager {
             // hangs its cache off the map object, so building a new one is what throws that cache away.
             ((RecipeManagerAccessor) manager).sce$setRecipes(RecipeMap.create(result.values()));
             manager.finalizeRecipeLoading(server.getWorldData().enabledFeatures());
+            recipeEpoch++;
         } catch (Exception e) {
             // Never silently: if the recipe set cannot be swapped, the edit did not happen, and whoever
             // made it needs to see why rather than watch it appear to work and then not.

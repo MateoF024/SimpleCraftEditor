@@ -63,6 +63,7 @@ public final class SceNetworking {
     public static final Identifier DELETE = channel("delete");
     public static final Identifier REQUEST_JSON = channel("request_json");
     public static final Identifier REQUEST_RECIPES = channel("request_recipes");
+    public static final Identifier REQUEST_RECIPE_IDS = channel("request_recipe_ids");
     public static final Identifier OPEN_EDITOR = channel("open_editor");
     public static final Identifier SET_SLOT = channel("set_slot");
     public static final Identifier SYNC = channel("sync");
@@ -71,8 +72,15 @@ public final class SceNetworking {
     public static final Identifier OPEN_SEQUENCE = channel("open_sequence");
     public static final Identifier SAVE_RESULT = channel("save_result");
     public static final Identifier RECIPES_FOR = channel("recipes_for");
+    public static final Identifier RECIPE_IDS = channel("recipe_ids");
 
     private static final int MAX_JSON = 1024 * 1024;
+    /**
+     * How many recipe ids travel in one packet. A payload is capped at a megabyte and an id cannot be
+     * longer than about half a kilobyte, so a batch this size cannot reach the cap however the ids are
+     * spelled; a heavily modded server has tens of thousands of them and needs the batching.
+     */
+    private static final int ID_BATCH = 1000;
 
     private static Supplier<RegistryAccess> clientRegistryAccess = () -> null;
     /** Last permission answer sent to each player, so a change can be noticed and pushed. */
@@ -116,7 +124,7 @@ public final class SceNetworking {
         // The asymmetry is the point: declare here exactly when there is no receiver to do it.
         if (Platform.getEnvironment() == Env.SERVER) {
             for (Identifier channel : new Identifier[]{
-                    SYNC, RECIPE_JSON, OPEN_RAW, OPEN_SEQUENCE, SAVE_RESULT, RECIPES_FOR}) {
+                    SYNC, RECIPE_JSON, OPEN_RAW, OPEN_SEQUENCE, SAVE_RESULT, RECIPES_FOR, RECIPE_IDS}) {
                 NetworkManager.registerS2CPayloadType(channel);
             }
         }
@@ -155,6 +163,10 @@ public final class SceNetworking {
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, REQUEST_RECIPES, (buf, context) -> {
             Identifier itemId = buf.readIdentifier();
             context.queue(() -> handleRequestRecipes(context.getPlayer(), itemId));
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, REQUEST_RECIPE_IDS, (buf, context) -> {
+            long known = buf.readLong();
+            context.queue(() -> handleRequestRecipeIds(context.getPlayer(), known));
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, OPEN_EDITOR, (buf, context) -> {
             String idString = buf.readUtf();
@@ -240,6 +252,54 @@ public final class SceNetworking {
             buf.writeIdentifier(id);
         }
         NetworkManager.sendToPlayer(player, RECIPES_FOR, buf);
+    }
+
+    /**
+     * Sends the recipe ids the editor's id field completes against.
+     *
+     * <p>On the older versions the field read them out of the client's own recipe manager. From 1.21.11
+     * the client is not sent the recipes at all, so the ids have to be asked for — and ids are the whole
+     * of what that field ever needed, which is all that travels here.
+     *
+     * <p>The client says which version of the list it already holds. If that is still the live one it is
+     * told so and nothing else is sent, so opening the editor a second time costs a few bytes rather than
+     * the whole list again. Otherwise the ids go over in batches, because a heavily modded server has
+     * tens of thousands of them and one payload cannot carry them all.
+     */
+    private static void handleRequestRecipeIds(Player sender, long known) {
+        if (!(sender instanceof ServerPlayer player) || !mayEdit(player)) {
+            return;
+        }
+        long started = ScePerf.now();
+        long epoch = RecipeStateManager.INSTANCE.recipeEpoch();
+        if (known == epoch) {
+            RegistryFriendlyByteBuf buf = serverBuffer(player);
+            buf.writeLong(epoch);
+            buf.writeBoolean(true);
+            NetworkManager.sendToPlayer(player, RECIPE_IDS, buf);
+            ScePerf.since("tell a client its recipe ids are still current", started);
+            return;
+        }
+        List<Identifier> ids = RecipeStateManager.INSTANCE.liveRecipeIds(player.level().getServer());
+        int sent = 0;
+        // At least one packet always goes out, even with no recipes at all: the client is waiting for an
+        // answer, and "none" is an answer.
+        do {
+            int to = Math.min(sent + ID_BATCH, ids.size());
+            RegistryFriendlyByteBuf buf = serverBuffer(player);
+            buf.writeLong(epoch);
+            buf.writeBoolean(false);
+            buf.writeBoolean(sent == 0);
+            buf.writeBoolean(to == ids.size());
+            buf.writeVarInt(to - sent);
+            for (int i = sent; i < to; i++) {
+                buf.writeIdentifier(ids.get(i));
+            }
+            NetworkManager.sendToPlayer(player, RECIPE_IDS, buf);
+            sent = to;
+        } while (sent < ids.size());
+        SceDebug.log(SceDebug.Category.NETWORK, "Sent {} recipe ids for the id field", ids.size());
+        ScePerf.since("send the recipe ids for the id field", started);
     }
 
     /**
@@ -514,6 +574,17 @@ public final class SceNetworking {
         RegistryFriendlyByteBuf buf = clientBuffer();
         buf.writeIdentifier(itemId);
         NetworkManager.sendToServer(REQUEST_RECIPES, buf);
+    }
+
+    /**
+     * Asks for the recipe ids the id field completes against. {@code known} is the version of the list
+     * this client already holds, so a list that has not changed does not have to be sent again; zero when
+     * it holds none. The answer comes back on {@link #RECIPE_IDS}.
+     */
+    public static void sendRequestRecipeIds(long known) {
+        RegistryFriendlyByteBuf buf = clientBuffer();
+        buf.writeLong(known);
+        NetworkManager.sendToServer(REQUEST_RECIPE_IDS, buf);
     }
 
     /** Asks the server to open the editor menu; empty id means a fresh recipe, mode -1 means "derive from recipe". */

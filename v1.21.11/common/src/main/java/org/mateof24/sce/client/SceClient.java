@@ -6,6 +6,7 @@ import com.google.gson.JsonParseException;
 import com.mojang.serialization.JsonOps;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.architectury.event.events.client.ClientPlayerEvent;
 import dev.architectury.event.events.client.ClientTickEvent;
 import dev.architectury.networking.NetworkManager;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
@@ -30,7 +31,6 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.RecipeManager;
 import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.SimpleCraftEditor;
 import org.mateof24.sce.client.screen.RawRecipeScreen;
@@ -268,6 +268,7 @@ public final class SceClient {
         SceNetworking.setClientRegistryAccess(() -> Minecraft.getInstance().level.registryAccess());
         registerReceivers();
         KeyMappingRegistry.register(OPEN_MANAGER);
+        ClientPlayerEvent.CLIENT_PLAYER_QUIT.register(player -> ClientRecipeIds.clear());
         ClientTickEvent.CLIENT_POST.register(minecraft -> {
             while (OPEN_MANAGER.consumeClick()) {
                 if (minecraft.player != null && ClientEditorState.canEdit()) {
@@ -297,7 +298,28 @@ public final class SceClient {
                 ClientEditorState.setCanEdit(canEdit);
                 ClientEditorState.setDisabled(disabled);
                 ClientEditorState.setGenerated(generated);
+                // The same goes for the ids the editor completes against, but only worth asking again
+                // while a screen is actually using them; otherwise the next one to open will ask.
+                if (Minecraft.getInstance().screen instanceof RecipeEditorScreen
+                        || Minecraft.getInstance().screen instanceof SequencedAssemblyScreen) {
+                    ClientRecipeIds.request();
+                }
             });
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.RECIPE_IDS, (buf, context) -> {
+            long epoch = buf.readLong();
+            if (buf.readBoolean()) {
+                context.queue(() -> ClientRecipeIds.keep(epoch));
+                return;
+            }
+            boolean first = buf.readBoolean();
+            boolean last = buf.readBoolean();
+            int count = buf.readVarInt();
+            List<Identifier> batch = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                batch.add(buf.readIdentifier());
+            }
+            context.queue(() -> ClientRecipeIds.accept(epoch, first, last, batch));
         });
         NetworkManager.registerReceiver(NetworkManager.Side.S2C, SceNetworking.RECIPES_FOR, (buf, context) -> {
             Identifier itemId = buf.readIdentifier();

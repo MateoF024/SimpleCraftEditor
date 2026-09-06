@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
+import org.mateof24.sce.client.ClientRecipeIds;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +48,7 @@ public final class FieldAssist {
         ITEM_TAGS,
         /** Fluids, or fluid tags once the text starts with {@code #}. */
         FLUIDS,
-        /** Every recipe the client knows about, including the ones this mod has injected. */
+        /** Every recipe on the server, including the ones this mod has authored. */
         RECIPES
     }
 
@@ -80,8 +81,14 @@ public final class FieldAssist {
     }
 
     public void add(EditBox box, Predicate<String> valid, Source source) {
-        if (box != null) {
-            fields.add(new Field(box, valid, source));
+        if (box == null) {
+            return;
+        }
+        fields.add(new Field(box, valid, source));
+        if (source == Source.RECIPES) {
+            // The only list that is not on this side already. Asked for as the screen is built rather
+            // than as the field is typed in, so it is here before there is anything to complete.
+            ClientRecipeIds.request();
         }
     }
 
@@ -228,10 +235,11 @@ public final class FieldAssist {
                 }
             }
             case RECIPES -> {
-                // Nothing to offer here on this version. From 1.21.11 the client is not sent the recipes
-                // at all — it keeps display data for its recipe book and no list of ids — so completing a
-                // recipe id would mean asking the server for it. The field still takes a typed id, and
-                // the command line still completes them, which is where they are usually copied from.
+                // From 1.21.11 the client is not sent the recipes at all, so this list is not read out of
+                // a client-side recipe manager as it is on the older versions; it is the answer the
+                // server gave when the screen opened. Everything below this line works the same either
+                // way — the field completes the datapack, every mod, and the recipes this editor wrote.
+                out.addAll(ClientRecipeIds.ids());
             }
             default -> {
             }
