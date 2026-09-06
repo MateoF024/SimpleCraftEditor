@@ -1,5 +1,5 @@
 plugins {
-    id 'com.github.johnrengelman.shadow'
+    id 'com.gradleup.shadow'
 }
 
 architectury {
@@ -24,7 +24,7 @@ configurations {
     }
 }
 
-// Recipe-viewer (JEI, EMI) and Create APIs we integrate with. Sourced from the local, gitignored
+// Recipe-viewer (JEI, EMI, REI) and Create APIs we integrate with. Sourced from the local, gitignored
 // libs/ tree (see roadmap). Compile-time only: we never bundle or hard-depend on them, and Create
 // is a soft dependency loaded only when present.
 def integrationLibs = file("${rootProject.projectDir}/libs/v1.20.1/fabric")
@@ -38,6 +38,7 @@ dependencies {
 
     modCompileOnly fileTree(dir: integrationLibs, include: 'jei-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
+    modCompileOnly fileTree(dir: integrationLibs, include: 'RoughlyEnoughItems-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
     // Nothing extra is loaded in the dev client. JEI, EMI and Create are compiled against above but

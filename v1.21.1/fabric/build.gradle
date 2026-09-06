@@ -1,5 +1,5 @@
 plugins {
-    id 'com.github.johnrengelman.shadow'
+    id 'com.gradleup.shadow'
 }
 
 architectury {
@@ -36,6 +36,7 @@ dependencies {
 
     modCompileOnly fileTree(dir: integrationLibs, include: 'jei-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
+    modCompileOnly fileTree(dir: integrationLibs, include: 'RoughlyEnoughItems-*.jar')
 
     // Nothing extra is loaded in the dev client. JEI, EMI and Create are compiled against above but
     // never run here: loom leaves a file-dependency mod's inherited Minecraft methods in intermediary

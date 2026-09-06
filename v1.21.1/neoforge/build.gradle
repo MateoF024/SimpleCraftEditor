@@ -1,5 +1,5 @@
 plugins {
-    id 'com.github.johnrengelman.shadow'
+    id 'com.gradleup.shadow'
 }
 
 architectury {
@@ -41,6 +41,7 @@ dependencies {
 
     modCompileOnly fileTree(dir: integrationLibs, include: 'jei-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
+    modCompileOnly fileTree(dir: integrationLibs, include: 'RoughlyEnoughItems-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'create-*.jar')
 
     // Nothing extra is loaded in the dev client. JEI, EMI and Create are compiled against above but
