@@ -1,0 +1,103 @@
+package org.mateof24.sce.client.screen;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParser;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import org.mateof24.sce.net.SceNetworking;
+
+/**
+ * Universal fallback editor: edits any recipe as raw JSON. Used for recipe types the typed editors do not
+ * handle, and reachable from the typed editor via the Raw button. The server validates the JSON against the
+ * real serializer when saving, so an invalid definition is rejected there.
+ */
+@Environment(EnvType.CLIENT)
+public class RawRecipeScreen extends Screen {
+    private static final Gson PRETTY = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+
+    private final Identifier id;
+    private final String initialJson;
+    private MultiLineEditBox editor;
+    private final StatusLine status = new StatusLine();
+
+    public RawRecipeScreen(Identifier id, String json) {
+        super(Component.translatable("sce.raw.title", id.toString()));
+        this.id = id;
+        String pretty = json;
+        try {
+            pretty = PRETTY.toJson(JsonParser.parseString(json));
+        } catch (Exception ignored) {
+            // leave the text as-is if it is not valid JSON
+        }
+        this.initialJson = pretty;
+    }
+
+    @Override
+    protected void init() {
+        int boxWidth = Math.min(width - 40, 420);
+        int boxHeight = height - 92;
+        editor = MultiLineEditBox.builder()
+                .setX(width / 2 - boxWidth / 2)
+                .setY(40)
+                .setPlaceholder(Component.translatable("sce.hint.recipe_json"))
+                .build(font, boxWidth, boxHeight, Component.translatable("sce.hint.recipe_json"));
+        editor.setCharacterLimit(1024 * 1024);
+        editor.setValue(initialJson);
+        addRenderableWidget(editor);
+
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save())
+                .bounds(width / 2 - 154, height - 40, 100, 20).build());
+        addRenderableWidget(Button.builder(CommonComponents.GUI_CANCEL, b -> onClose())
+                .bounds(width / 2 + 54, height - 40, 100, 20).build());
+    }
+
+    private void save() {
+        String text = editor.getValue();
+        try {
+            JsonParser.parseString(text).getAsJsonObject();
+        } catch (Exception e) {
+            status.set(Component.translatable("sce.status.invalid_json"));
+            return;
+        }
+        SceNetworking.sendSave(id, text);
+        status.set(Component.translatable("sce.status.sent", id.toString()));
+    }
+
+    /**
+     * Called from the network layer with the server's verdict on a save request.
+     *
+     * <p>A save that worked goes back to the manager and says so there: that is where the recipe just
+     * saved can be seen in the list, so the confirmation and the thing it confirms are on the same
+     * screen. A save that failed stays here, because the form that has to be fixed is here.
+     */
+    public void onSaveResult(Identifier saved, boolean ok) {
+        if (ok) {
+            RecipeManagerScreen.showOnOpen(Component.translatable("sce.status.saved", saved.toString()));
+            minecraft.setScreenAndShow(new RecipeManagerScreen());
+            return;
+        }
+        status.set(Component.translatable("sce.status.save_failed", saved.toString()));
+    }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        // Draw the title and status after super.render: it renders the blurred background itself, so drawing
+        // our foreground before it would get smeared by that blur.
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        graphics.centeredText(font, title, width / 2, 20, 0xFFFFFFFF);
+        status.drawCentered(graphics, font, width / 2, height - 58);
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+}
