@@ -464,6 +464,14 @@ public final class RecipeCompiler {
             "transitionalItem", "transitional_item", "sequence", "loops",
             InheritingCraftingRecipe.DATA_KEY);
 
+    /**
+     * The smithing table's own fields, which this editor models — but only for its own recipe, the way
+     * the pot's are. Names as ordinary as {@code base} belong to plenty of other mods' recipe types, and
+     * carrying theirs through untouched is the whole point of the set above.
+     */
+    private static final java.util.Set<String> SMITHING_KEYS =
+            java.util.Set.of("template", "base", "addition");
+
     /** The campfire pot's own fields, which this editor models rather than carries. */
     private static final java.util.Set<String> POT_KEYS = java.util.Set.of(
             "category", CookingPot.SEASONING_TAG_KEY, CookingPot.SEASONING_PROCESSORS_KEY);
@@ -472,6 +480,7 @@ public final class RecipeCompiler {
     public static void preserveFrom(RecipeDraft draft, JsonObject json) {
         String type = json.has("type") ? json.get("type").getAsString() : "";
         boolean pot = CookingPot.isPotType(type);
+        boolean smithing = "minecraft:smithing_transform".equals(type);
         // A type this editor writes for itself is not remembered: it follows the settings on
         // screen, and holding on to it would override turning inheritance back off. The pot's two types
         // are the editor's own in the same sense - a mode writes them - so they are not remembered either.
@@ -482,7 +491,7 @@ public final class RecipeCompiler {
         draft.potProcessors.clear();
         for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
             String key = entry.getKey();
-            if (MODELLED_KEYS.contains(key)) {
+            if (MODELLED_KEYS.contains(key) || (smithing && SMITHING_KEYS.contains(key))) {
                 continue;
             }
             if (pot && POT_KEYS.contains(key)) {

@@ -329,6 +329,13 @@ public final class RecipeCompiler {
             "transitionalItem", "transitional_item", "sequence", "loops",
             InheritingCraftingRecipe.DATA_KEY);
 
+    /**
+     * The smithing table's own fields, which this editor models — but only for its own recipe. Names as ordinary as {@code base} belong to plenty of other mods' recipe types, and
+     * carrying theirs through untouched is the whole point of the set above.
+     */
+    private static final java.util.Set<String> SMITHING_KEYS =
+            java.util.Set.of("template", "base", "addition");
+
     /** Remembers a recipe's own type and everything about it this editor has no field for. */
     public static void preserveFrom(RecipeDraft draft, JsonObject json) {
         String type = json.has("type") ? json.get("type").getAsString() : "";
@@ -336,11 +343,14 @@ public final class RecipeCompiler {
         // screen, and holding on to it would override turning inheritance back off.
         draft.sourceType = InheritingCraftingRecipe.SHAPED_TYPE.equals(type)
                 || InheritingCraftingRecipe.SHAPELESS_TYPE.equals(type) ? "" : type;
+        boolean smithing = "minecraft:smithing_transform".equals(type);
         draft.extras.clear();
         for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
-            if (!MODELLED_KEYS.contains(entry.getKey())) {
-                draft.extras.put(entry.getKey(), entry.getValue().deepCopy());
+            String key = entry.getKey();
+            if (MODELLED_KEYS.contains(key) || (smithing && SMITHING_KEYS.contains(key))) {
+                continue;
             }
+            draft.extras.put(key, entry.getValue().deepCopy());
         }
     }
 
