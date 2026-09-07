@@ -14,6 +14,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
@@ -145,8 +146,8 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
     // ------------------------------------------------------------------ assembling
 
     @Override
-    public ItemStack assemble(CraftingInput input, HolderLookup.Provider registries) {
-        ItemStack result = base.assemble(input, registries);
+    public ItemStack assemble(CraftingInput input) {
+        ItemStack result = base.assemble(input);
         switch (carry) {
             case RECIPE:
                 applyRecipeData(result);
@@ -200,6 +201,12 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
         return base.group();
     }
 
+    /** Whether the recipe book pops up for this recipe. The wrapped recipe's answer, like the rest. */
+    @Override
+    public boolean showNotification() {
+        return base.showNotification();
+    }
+
     @Override
     public CraftingBookCategory category() {
         return base.category();
@@ -231,7 +238,9 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
         if (resultStack.isEmpty()) {
             return displays;
         }
-        SlotDisplay result = new SlotDisplay.ItemStackSlotDisplay(resultStack);
+        // A display carries a template rather than a stack from 26.1.2; the stack this recipe
+        // produces is the template of what it makes.
+        SlotDisplay result = new SlotDisplay.ItemStackSlotDisplay(ItemStackTemplate.fromNonEmptyStack(resultStack));
         List<RecipeDisplay> shown = new ArrayList<>(displays.size());
         for (RecipeDisplay display : displays) {
             if (display instanceof ShapedCraftingRecipeDisplay shaped) {
@@ -249,7 +258,7 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
 
     @Override
     public RecipeSerializer<? extends CraftingRecipe> getSerializer() {
-        return serializer;
+        return serializer.get();
     }
 
     // ------------------------------------------------------------------ reading and writing
@@ -260,10 +269,10 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
      *
      * <p>That last part is the whole point. A stack's components can name a registry entry — an
      * enchantment, a potion — and resolving one needs the registries, which are in hand at exactly one
-     * moment: while the recipe file is being read. They are not there afterwards, and the game asks
-     * every recipe for its display as it finishes loading them, so a stack read then would come back
-     * stripped of the very data this recipe exists to carry — silently, because a stack that fails to
-     * read is simply empty.
+     * moment: while the recipe file is being read. They are not there afterwards. The game asks every
+     * recipe for its display as it finishes loading them, and from 26.1.2 {@code assemble} is not handed
+     * them either, so a stack read late would come back stripped of the very data this recipe exists to
+     * carry — silently, because a stack that fails to read is simply empty.
      *
      * <p>The text form is kept because the file is the same file on every version this mod supports.
      */
@@ -344,43 +353,46 @@ public final class InheritingCraftingRecipe implements CraftingRecipe {
     }
 
     /**
-     * Reads and writes the vanilla recipe it wraps, plus one block of our own beside it.
+     * Builds the serializer that reads and writes the vanilla recipe it wraps, plus one block of our own
+     * beside it.
      *
      * <p>The vanilla codec does all the real work, which is the point: the file stays a normal shaped or
      * shapeless recipe that someone could still read by hand, with the data parts gathered under a single
      * key rather than scattered through fields the game would not expect them in.
      */
-    public static final class Serializer implements RecipeSerializer<InheritingCraftingRecipe> {
-        private final MapCodec<InheritingCraftingRecipe> codec;
-        private final StreamCodec<RegistryFriendlyByteBuf, InheritingCraftingRecipe> streamCodec;
+    public static final class Serializer {
+        private final RecipeSerializer<InheritingCraftingRecipe> serializer;
 
         public <T extends CraftingRecipe> Serializer(RecipeSerializer<T> vanilla) {
             // The wrapped recipe is always the shape this serializer was built for. The pairing is fixed
             // here and cannot be got wrong from outside, which is what the cast rests on.
             @SuppressWarnings("unchecked")
             java.util.function.Function<InheritingCraftingRecipe, T> unwrap = recipe -> (T) recipe.base;
-            this.codec = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            MapCodec<InheritingCraftingRecipe> codec = RecordCodecBuilder.mapCodec(instance -> instance.group(
                     vanilla.codec().forGetter(unwrap),
                     Data.CODEC.optionalFieldOf(DATA_KEY, new Data("none", List.of(), ItemStack.EMPTY))
                             .forGetter(recipe -> new Data(recipe.carry.key(), recipe.required, recipe.resultStack))
             ).apply(instance, (base, data) -> new InheritingCraftingRecipe(
                     base, Carry.of(data.carry()), data.require(), data.result(), this)));
-            this.streamCodec = StreamCodec.composite(
+            StreamCodec<RegistryFriendlyByteBuf, InheritingCraftingRecipe> streamCodec = StreamCodec.composite(
                     vanilla.streamCodec(), unwrap,
                     Data.STREAM_CODEC,
                     recipe -> new Data(recipe.carry.key(), recipe.required, recipe.resultStack),
                     (base, data) -> new InheritingCraftingRecipe(
                             base, Carry.of(data.carry()), data.require(), data.result(), this));
+            this.serializer = new RecipeSerializer<>(codec, streamCodec);
         }
 
-        @Override
-        public MapCodec<InheritingCraftingRecipe> codec() {
-            return codec;
-        }
-
-        @Override
-        public StreamCodec<RegistryFriendlyByteBuf, InheritingCraftingRecipe> streamCodec() {
-            return streamCodec;
+        /**
+         * The serializer itself, ready to register.
+         *
+         * <p>A {@code RecipeSerializer} is a record of two codecs from 26.1.2 rather than an interface to
+         * implement, which is simpler — except that the codecs have to hand each recipe the serializer
+         * that read it, and a record cannot exist before its own fields. So this class builds the pair
+         * first and the record last, and is what the recipe holds on to.
+         */
+        public RecipeSerializer<InheritingCraftingRecipe> get() {
+            return serializer;
         }
     }
 }

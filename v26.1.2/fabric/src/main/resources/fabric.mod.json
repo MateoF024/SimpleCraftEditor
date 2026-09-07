@@ -16,6 +16,15 @@
   "entrypoints": {
     "main": [
       "org.mateof24.sce.fabric.SimpleCraftEditorFabric"
+    ],
+    "client": [
+      "org.mateof24.sce.fabric.client.SimpleCraftEditorFabricClient"
+    ],
+    "jei_mod_plugin": [
+      "org.mateof24.sce.client.jei.SceJeiPlugin"
+    ],
+    "rei_client": [
+      "org.mateof24.sce.client.rei.SceReiPlugin"
     ]
   },
   "mixins": [
