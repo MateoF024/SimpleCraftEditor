@@ -18,7 +18,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
-import net.minecraft.Util;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.material.Fluid;
@@ -54,13 +53,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final ResourceLocation BG_TEXTURE = ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_bg.png");
     static final ResourceLocation SLOT_TEXTURE = ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_slot.png");
-    /** The two empty-slot sprites the smithing table shows in its template slot, in its order. */
-    private static final ResourceLocation[] TEMPLATE_TEXTURES = {
-            ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_smithing_trim.png"),
-            ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_smithing_upgrade.png")};
-    /** How long each of them is up, and how long the change between them takes. Vanilla's own numbers. */
-    private static final long TEMPLATE_PERIOD_MS = 1500L;
-    private static final long TEMPLATE_FADE_MS = 200L;
+    /** The empty-slot art the smithing table shows in its template slot. */
+    private static final ResourceLocation TEMPLATE_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_smithing_upgrade.png");
     private static final ResourceLocation ARROW_TEXTURE = ResourceLocation.fromNamespaceAndPath("sce", "textures/gui/sce_arrow.png");
 
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
@@ -648,9 +643,6 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private boolean resultHasData() {
-        if (outputCount == 0) {
-            return false;
-        }
         ItemStack stack = menu.outputSlot(0).getItem();
         return !stack.isEmpty() && !stack.getComponentsPatch().isEmpty();
     }
@@ -720,11 +712,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         } else {
             draft.kind = RecipeModes.kind(mode);
             draft.cooking = RecipeModes.cooking(mode);
-            // A smithing trim has no result to read: it gives back the piece it was given.
-            if (outputCount > 0) {
-                draft.result = resolveOutput(0);
-                draft.resultCount = Math.max(1, resolveOutputCount(0));
-            }
+            draft.result = resolveOutput(0);
+            draft.resultCount = Math.max(1, resolveOutputCount(0));
             if (RecipeModes.isCooking(mode)) {
                 draft.experience = pendingExp;
                 draft.cookingTime = pendingTime;
@@ -969,9 +958,6 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             Slot template = menu.inputSlot(0);
             drawTemplateHint(graphics, leftPos + template.x, topPos + template.y);
         }
-        if (outputCount == 0) {
-            return; // nothing to point an arrow at
-        }
         Slot firstOut = menu.outputSlot(0);
         int inputRight = 0;
         for (int i = 0; i < inputCount; i++) {
@@ -987,30 +973,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
-    /**
-     * The template slot's own art, alternating between the two sprites the smithing table alternates.
-     *
-     * <p>Same timing as the table: each sprite is up for 30 ticks and the change is a 4-tick crossfade,
-     * read out of {@code CyclingSlotBackground} rather than guessed at. Measured against the clock
-     * instead of a tick counter because this screen keeps none, which comes to the same thing on screen.
-     */
+    /** The template slot's own art. Drawn only while the slot is empty, which is the table's rule too. */
     private void drawTemplateHint(GuiGraphics graphics, int x, int y) {
-        long now = Util.getMillis();
-        int index = (int) ((now / TEMPLATE_PERIOD_MS) % TEMPLATE_TEXTURES.length);
-        float alpha = Math.min((now % TEMPLATE_PERIOD_MS) / (float) TEMPLATE_FADE_MS, 1.0F);
-        // Blending has to be asked for on this version, or the crossfade draws both sprites solid.
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        if (alpha < 1.0F) {
-            int previous = Math.floorMod(index - 1, TEMPLATE_TEXTURES.length);
-            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F - alpha);
-            graphics.blit(TEMPLATE_TEXTURES[previous], x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
-            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
-        }
-        graphics.setColor(1.0F, 1.0F, 1.0F, alpha);
-        graphics.blit(TEMPLATE_TEXTURES[index], x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
-        graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.disableBlend();
+        graphics.blit(TEMPLATE_TEXTURE, x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {

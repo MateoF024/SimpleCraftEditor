@@ -32,8 +32,7 @@ public final class RecipeCompiler {
             case CRAFTING_SHAPED -> shaped(draft);
             case COOKING -> cooking(draft);
             case STONECUTTING -> stonecutting(draft);
-            case SMITHING_TRANSFORM -> smithing(draft, "minecraft:smithing_transform");
-            case SMITHING_TRIM -> smithing(draft, "minecraft:smithing_trim");
+            case SMITHING_TRANSFORM -> smithing(draft);
             case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
             case MECHANICAL_CRAFTING -> mechanicalCrafting(draft);
             case SEQUENCED_ASSEMBLY -> SequencedAssemblyCompiler.toJson(draft);
@@ -202,16 +201,12 @@ public final class RecipeCompiler {
      *
      * <p>A trim recipe has no result. What it produces is the piece it was given, wearing the pattern.
      */
-    private static JsonObject smithing(RecipeDraft draft, String type) {
-        JsonObject json = base(draft, type);
+    private static JsonObject smithing(RecipeDraft draft) {
+        JsonObject json = base(draft, "minecraft:smithing_transform");
         json.add("template", draft.input(0).toIngredientJson());
         json.add("base", draft.input(1).toIngredientJson());
         json.add("addition", draft.input(2).toIngredientJson());
-        if (draft.kind != RecipeDraft.Kind.SMITHING_TRIM) {
-            // A trim recipe has no result on this version either: what it produces is the piece it was
-            // given, and which pattern goes on it comes from the template item rather than from a field.
-            json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
-        }
+        json.add("result", stackJson(draft, Math.max(1, draft.resultCount)));
         return json;
     }
 
@@ -520,8 +515,7 @@ public final class RecipeCompiler {
             case "minecraft:smelting", "minecraft:blasting", "minecraft:smoking", "minecraft:campfire_cooking" ->
                     fromCooking(json, type);
             case "minecraft:stonecutting" -> fromStonecutting(json);
-            case "minecraft:smithing_transform" -> fromSmithing(json, RecipeDraft.Kind.SMITHING_TRANSFORM);
-            case "minecraft:smithing_trim" -> fromSmithing(json, RecipeDraft.Kind.SMITHING_TRIM);
+            case "minecraft:smithing_transform" -> fromSmithing(json);
             case "create:mechanical_crafting" -> fromMechanicalCrafting(json);
             case SequencedAssemblyCompiler.TYPE -> SequencedAssemblyCompiler.fromJson(id, json);
             case CookingPot.SHAPED_TYPE, CookingPot.SHAPELESS_TYPE -> fromCookingPot(json);
@@ -540,18 +534,16 @@ public final class RecipeCompiler {
         return draft;
     }
 
-    private static RecipeDraft fromSmithing(JsonObject json, RecipeDraft.Kind kind) {
+    private static RecipeDraft fromSmithing(JsonObject json) {
         RecipeDraft draft = new RecipeDraft();
-        draft.kind = kind;
+        draft.kind = RecipeDraft.Kind.SMITHING_TRANSFORM;
         draft.inputs.clear();
         // Always three, in the table's own order, so an absent template or addition still leaves its slot
         // where the author expects to find it.
         draft.inputs.add(IngredientValue.fromIngredientJson(json.get("template")));
         draft.inputs.add(IngredientValue.fromIngredientJson(json.get("base")));
         draft.inputs.add(IngredientValue.fromIngredientJson(json.get("addition")));
-        if (kind != RecipeDraft.Kind.SMITHING_TRIM) {
-            readResult(draft, json.get("result"));
-        }
+        readResult(draft, json.get("result"));
         return draft;
     }
 

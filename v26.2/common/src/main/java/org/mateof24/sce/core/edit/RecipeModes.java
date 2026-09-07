@@ -58,11 +58,13 @@ public final class RecipeModes {
             new Mode(RecipeDraft.Kind.COOKING, RecipeDraft.Cooking.CAMPFIRE, null, "sce.mode.campfire", 1, 1),
             new Mode(RecipeDraft.Kind.STONECUTTING, null, null, "sce.mode.stonecutting", 1, 1),
 
-            // The smithing table: template, base and addition in a row. A transform recipe makes a new
-            // item and so has a result; a trim recipe only decorates the piece it is given, and has
-            // none — its result is that same piece, which is why it is not drawn as one.
+            // The smithing table: template, base and addition in a row, and what they turn into.
+            //
+            // Only the upgrade. The table's other recipe puts a trim on a piece, and there the addition
+            // is not a free choice: it has to be one of the trim materials, because that is the thing
+            // that carries the colour — anything else and the table simply refuses to craft. A recipe
+            // whose only editable part is one of eleven fixed items is not worth an editor.
             new Mode(RecipeDraft.Kind.SMITHING_TRANSFORM, null, null, "sce.mode.smithing_transform", 3, 1),
-            new Mode(RecipeDraft.Kind.SMITHING_TRIM, null, null, "sce.mode.smithing_trim", 3, 0),
 
             // Create's processing machines. All share the ingredient/result layout.
             create("create:mixing", "sce.mode.create_mixing"),
@@ -93,7 +95,7 @@ public final class RecipeModes {
                     "sce.mode.cobblemon_cooking_pot", 9, 1, CookingPot.MOD_ID)};
 
     public static final int COUNT = MODES.length;
-    private static final int FIRST_CREATE = 9;
+    private static final int FIRST_CREATE = 8;
 
     private RecipeModes() {
     }
@@ -171,20 +173,15 @@ public final class RecipeModes {
         return isCrafting(mode) || isCreate(mode) || isCookingPot(mode) || isSmithing(mode);
     }
 
-    /** Either of the smithing table's two recipes. */
+    /** The smithing table's upgrade recipe. */
     public static boolean isSmithing(int mode) {
-        RecipeDraft.Kind kind = MODES[clamp(mode)].kind();
-        return kind == RecipeDraft.Kind.SMITHING_TRANSFORM || kind == RecipeDraft.Kind.SMITHING_TRIM;
+        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.SMITHING_TRANSFORM;
     }
 
-    /** The one that decorates rather than upgrades, and so has a pattern instead of a result. */
-    public static boolean isSmithingTrim(int mode) {
-        return MODES[clamp(mode)].kind() == RecipeDraft.Kind.SMITHING_TRIM;
-    }
 
     /** Whether a mode has a row of its own rules above the tag row, with a caption over it. */
     public static boolean hasRuleRow(int mode) {
-        return isCrafting(mode) || isCookingPot(mode) || isSmithingTrim(mode);
+        return isCrafting(mode) || isCookingPot(mode);
     }
 
     /** Sequenced assembly is edited on a dedicated screen rather than the shared slot layout. */
