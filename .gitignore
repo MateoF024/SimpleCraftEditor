@@ -37,4 +37,8 @@ roadmap.md
 # so the document is ignored by name rather than the folder.
 docs/PROJECT_STATE.md
 
+# The readme rewritten as HTML, to paste into CurseForge's editor. Private for the same reason:
+# it is a copy of what is already public, kept out of the repository so there is one readme, not two.
+docs/CURSEFORGE_DESCRIPTION.html
+
 docs/ANALISIS_1.1.0.md
