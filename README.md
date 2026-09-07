@@ -6,9 +6,9 @@ An in-game editor for Minecraft crafting recipes. Disable recipes, tweak existin
 
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/gj2KV14c?style=for-the-badge&logo=modrinth&label=Modrinth&color=00AF5C&logoColor=white)](https://modrinth.com/mod/simple-craft-editor) [![CurseForge Downloads](https://img.shields.io/curseforge/dt/1619854?style=for-the-badge&logo=curseforge&label=CurseForge&color=f16a20&logoColor=white)](https://www.curseforge.com/minecraft/mc-mods/simple-craft-editor)
 
-[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1%20%7C%201.21.11%20%7C%2026.1.2%20%7C%2026.2-dbd0b4?style=for-the-badge)](https://fabricmc.net/) [![Forge](https://img.shields.io/badge/Forge-1.20.1-e04e14?style=for-the-badge)](https://minecraftforge.net/) [![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1%20%7C%201.21.11%20%7C%2026.1.2%20%7C%2026.2-f98010?style=for-the-badge)](https://neoforged.net/) [![Environment](https://img.shields.io/badge/Env-Client%20%26%20Server-4a90d9?style=for-the-badge)](https://modrinth.com/mod/simple-craft-editor)
+[![Fabric](https://img.shields.io/badge/Fabric-1.20.1%20%7C%201.21.1%20%7C%201.21.11%20%7C%2026.1.2%20%7C%2026.2-dbd0b4?style=for-the-badge)](https://fabricmc.net/) [![Forge](https://img.shields.io/badge/Forge-1.20.1-e04e14?style=for-the-badge)](https://minecraftforge.net/) [![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1%20%7C%201.21.11%20%7C%2026.1.2%20%7C%2026.2-f98010?style=for-the-badge)](https://neoforged.net/) 
 
-[![Issues](https://img.shields.io/badge/Report-Issues-red?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MateoF024/SimpleCraftEditor/issues)
+[![Issues](https://img.shields.io/badge/Report-Issues-red?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MateoF024/SimpleCraftEditor/issues) [![Environment](https://img.shields.io/badge/Env-Client%20%26%20Server-4a90d9?style=for-the-badge)](https://modrinth.com/mod/simple-craft-editor)
 
 </div>
 
@@ -54,8 +54,6 @@ Requires **[Architectury API](https://modrinth.com/mod/architectury-api)**. Ever
 | **Recipe viewers** | JEI, EMI, REI |
 | **Recipe types** | Create, Cobblemon |
 | **Known to work beside** | KubeJS, CraftTweaker, Polymorph, FastSuite, FastWorkbench, FastFurnace, Fast Recipe Search, Sophisticated Backpacks |
-
-EMI is not available on 1.21.11 and above; JEI and REI are.
 
 ***
 
