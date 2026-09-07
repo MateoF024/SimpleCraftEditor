@@ -18,6 +18,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.Util;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.material.Fluid;
@@ -48,8 +49,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
     private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
-    private static final ResourceLocation TEMPLATE_TEXTURE =
-            new ResourceLocation("sce", "textures/gui/sce_smithing_template.png");
+    /** The two empty-slot sprites the smithing table shows in its template slot, in its order. */
+    private static final ResourceLocation[] TEMPLATE_TEXTURES = {
+            new ResourceLocation("sce", "textures/gui/sce_smithing_trim.png"),
+            new ResourceLocation("sce", "textures/gui/sce_smithing_upgrade.png")};
+    /** How long each of them is up, and how long the change between them takes. Vanilla's own numbers. */
+    private static final long TEMPLATE_PERIOD_MS = 1500L;
+    private static final long TEMPLATE_FADE_MS = 200L;
     private static final ResourceLocation ARROW_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_arrow.png");
 
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
@@ -859,9 +865,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 graphics.drawString(font, "%", x + 1, y + 1, 0xB07000, false);
             }
         }
-        if (RecipeModes.isSmithing(mode)) {
-            // What the smithing table draws in its first slot: the outline of an empty template. Under
-            // whatever is put there, like the table's own, so it reads as the same slot.
+        if (RecipeModes.isSmithing(mode) && menu.gridItem(0).isEmpty()
+                && (overlay[0] == null || overlay[0].isEmpty())) {
+            // What the smithing table draws in its first slot while nothing is in it. Hidden the moment
+            // something is — the table hides it too, and leaving it under an item is what made the trim
+            // outline poke out from behind a netherite upgrade.
             Slot template = menu.inputSlot(0);
             drawTemplateHint(graphics, leftPos + template.x, topPos + template.y);
         }
@@ -883,9 +891,30 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
     }
 
-    /** The template slot's own art, drawn under anything the slot holds. */
+    /**
+     * The template slot's own art, alternating between the two sprites the smithing table alternates.
+     *
+     * <p>Same timing as the table: each sprite is up for 30 ticks and the change is a 4-tick crossfade,
+     * read out of {@code CyclingSlotBackground} rather than guessed at. Measured against the clock
+     * instead of a tick counter because this screen keeps none, which comes to the same thing on screen.
+     */
     private void drawTemplateHint(GuiGraphics graphics, int x, int y) {
-        graphics.blit(TEMPLATE_TEXTURE, x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
+        long now = Util.getMillis();
+        int index = (int) ((now / TEMPLATE_PERIOD_MS) % TEMPLATE_TEXTURES.length);
+        float alpha = Math.min((now % TEMPLATE_PERIOD_MS) / (float) TEMPLATE_FADE_MS, 1.0F);
+        // Blending has to be asked for on this version, or the crossfade draws both sprites solid.
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        if (alpha < 1.0F) {
+            int previous = Math.floorMod(index - 1, TEMPLATE_TEXTURES.length);
+            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F - alpha);
+            graphics.blit(TEMPLATE_TEXTURES[previous], x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
+            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        }
+        graphics.setColor(1.0F, 1.0F, 1.0F, alpha);
+        graphics.blit(TEMPLATE_TEXTURES[index], x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
+        graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.disableBlend();
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
