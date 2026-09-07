@@ -443,6 +443,48 @@ public final class RecipeStateManager {
         return state().isGenerated(id) || rawJson(id) != null;
     }
 
+    /** What can be done with a recipe id, which is not the same question as whether it is spelled right. */
+    public enum Editability {
+        /** A recipe file backs it, or it is one of ours: it can be opened, changed and turned off. */
+        EDITABLE(null),
+        /** Something answers to the id, but nothing wrote a file for it — a script built it in code. */
+        SCRIPT("sce.msg.not_editable"),
+        /** Nothing in the running game answers to this id at all. */
+        UNKNOWN("sce.msg.no_such_recipe");
+
+        private final String refusal;
+
+        Editability(String refusal) {
+            this.refusal = refusal;
+        }
+
+        /** The message that says why this was refused, or null when there is nothing to refuse. */
+        public String refusal() {
+            return refusal;
+        }
+    }
+
+    /**
+     * Which of the three a recipe id is.
+     *
+     * <p>Every route that refuses one used to answer "a script wrote it", because the only question
+     * being asked was whether a file backed the id — and a name that is merely wrong has no file
+     * either. Typing {@code minecraft:} into the load box and pressing the button therefore claimed a
+     * script had written {@code minecraft:}, sending whoever typed it hunting through scripts for
+     * something that was never there. The two refusals are different and now say so.
+     */
+    public Editability editability(MinecraftServer server, Identifier id) {
+        if (isEditable(id)) {
+            return Editability.EDITABLE;
+        }
+        return known(server, id) ? Editability.SCRIPT : Editability.UNKNOWN;
+    }
+
+    /** Whether anything answers to this id in the running game: the pack's, a mod's, a script's or ours. */
+    public boolean known(MinecraftServer server, Identifier id) {
+        return server.getRecipeManager().byKey(keyOf(id)).isPresent();
+    }
+
     /** Result stack of a currently-loaded recipe, or {@link ItemStack#EMPTY} if absent. */
     public ItemStack resultOf(MinecraftServer server, Identifier id) {
         return server.getRecipeManager().byKey(keyOf(id))

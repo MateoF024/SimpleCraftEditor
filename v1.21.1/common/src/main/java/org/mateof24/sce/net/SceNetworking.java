@@ -129,9 +129,12 @@ public final class SceNetworking {
             ResourceLocation id = buf.readResourceLocation();
             context.queue(() -> ifAllowed(context.getPlayer(), player -> {
                 // Turning off a script-written recipe is as short-lived as editing one: the script puts it
-                // back on the next load. Refused for the same reason, and said the same way.
-                if (!RecipeStateManager.INSTANCE.isEditable(id)) {
-                    player.sendSystemMessage(Component.translatable("sce.msg.not_editable", id.toString()));
+                // back on the next load. Refused for the same reason, and said the same way — and an id
+                // nothing answers to is refused as that instead.
+                RecipeStateManager.Editability verdict =
+                        RecipeStateManager.INSTANCE.editability(player.getServer(), id);
+                if (verdict.refusal() != null) {
+                    player.sendSystemMessage(Component.translatable(verdict.refusal(), id.toString()));
                     return;
                 }
                 RecipeStateManager.INSTANCE.disable(player.getServer(), id);
@@ -301,12 +304,15 @@ public final class SceNetworking {
         // Only an explicit load (a negative mode) pulls in a stored recipe. Changing type must not quietly
         // adopt whatever recipe happens to share the id sitting in the box.
         if (editId != null && requestedMode < 0) {
-            // A recipe a script wrote is refused rather than opened. See RecipeStateManager#isEditable:
-            // the script rewrites it on every load, so an edit would hold until the next one and then
-            // vanish. Saying so is more use than an editor that appears to work.
-            if (!RecipeStateManager.INSTANCE.isEditable(editId)) {
-                player.sendSystemMessage(Component.translatable("sce.msg.not_editable", editId.toString()));
-                perf.finish("refused, a script wrote it");
+            // A recipe a script wrote is refused rather than opened: the script rewrites it on every
+            // load, so an edit would hold until the next one and then vanish, and saying so is more use
+            // than an editor that appears to work. An id nothing answers to is refused as that — see
+            // RecipeStateManager#editability, which is what tells the two apart.
+            RecipeStateManager.Editability verdict =
+                    RecipeStateManager.INSTANCE.editability(player.getServer(), editId);
+            if (verdict.refusal() != null) {
+                player.sendSystemMessage(Component.translatable(verdict.refusal(), editId.toString()));
+                perf.finish("refused: {}", verdict);
                 return;
             }
             perf.stage("check it can be edited");

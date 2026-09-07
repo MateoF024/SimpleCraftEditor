@@ -201,10 +201,12 @@ public final class SceCommands {
 
     private static int disable(CommandContext<CommandSourceStack> context) {
         ResourceLocation id = ResourceLocationArgument.getId(context, "recipe");
-        // Checked here rather than left to the engine's own refusal so the reason can be given: the
-        // command would otherwise report the same failure as a recipe that simply does not exist.
-        if (!RecipeStateManager.INSTANCE.isEditable(id)) {
-            context.getSource().sendFailure(Component.translatable("sce.msg.not_editable", id.toString()));
+        // Checked here rather than left to the engine's own refusal so the reason can be given, and a
+        // recipe that simply does not exist says that rather than borrowing the script one's excuse.
+        RecipeStateManager.Editability verdict =
+                RecipeStateManager.INSTANCE.editability(context.getSource().getServer(), id);
+        if (verdict.refusal() != null) {
+            context.getSource().sendFailure(Component.translatable(verdict.refusal(), id.toString()));
             return 0;
         }
         boolean ok = RecipeStateManager.INSTANCE.disable(context.getSource().getServer(), id);
