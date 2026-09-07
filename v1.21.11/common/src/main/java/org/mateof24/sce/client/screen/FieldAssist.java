@@ -7,6 +7,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.mateof24.sce.client.ClientRecipeIds;
@@ -49,7 +50,9 @@ public final class FieldAssist {
         /** Fluids, or fluid tags once the text starts with {@code #}. */
         FLUIDS,
         /** Every recipe on the server, including the ones this mod has authored. */
-        RECIPES
+        RECIPES,
+        /** The armour trim patterns this world has, which a datapack can add to. */
+        TRIM_PATTERNS
     }
 
     // Taken from CommandSuggestions so the list is indistinguishable from the one chat draws.
@@ -232,6 +235,15 @@ public final class FieldAssist {
                             .forEach(tag -> out.add("#" + tag.key().location()));
                 } else {
                     BuiltInRegistries.FLUID.keySet().forEach(id -> out.add(id.toString()));
+                }
+            }
+            case TRIM_PATTERNS -> {
+                // A datapack registry rather than a built-in one, so it is read from the world the
+                // client is in: a pack that adds a pattern gets it completed like any other.
+                Minecraft minecraft = Minecraft.getInstance();
+                if (minecraft.level != null) {
+                    minecraft.level.registryAccess().lookupOrThrow(Registries.TRIM_PATTERN)
+                            .keySet().forEach(id -> out.add(id.toString()));
                 }
             }
             case RECIPES -> {

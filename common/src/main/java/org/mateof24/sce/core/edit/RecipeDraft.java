@@ -16,7 +16,9 @@ import java.util.Map;
 public final class RecipeDraft {
     public enum Kind {
         CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING, MECHANICAL_CRAFTING,
-        SEQUENCED_ASSEMBLY
+        SEQUENCED_ASSEMBLY,
+        /** The smithing table's two recipes: one upgrades an item, the other only decorates it. */
+        SMITHING_TRANSFORM, SMITHING_TRIM
     }
 
     /**
@@ -166,6 +168,8 @@ public final class RecipeDraft {
             case CREATE_PROCESSING -> 6;
             case MECHANICAL_CRAFTING -> MECHANICAL_SIZE * MECHANICAL_SIZE;
             case SEQUENCED_ASSEMBLY -> 1; // the single base ingredient the sequence starts from
+            // The smithing table's three: template, base and addition, always in that order.
+            case SMITHING_TRANSFORM, SMITHING_TRIM -> 3;
         };
         for (int i = 0; i < slots; i++) {
             draft.inputs.add(IngredientValue.empty());

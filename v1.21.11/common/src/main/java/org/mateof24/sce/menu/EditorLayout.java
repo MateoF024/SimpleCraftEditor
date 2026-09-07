@@ -157,7 +157,11 @@ public final class EditorLayout {
         seasoningCount = RecipeModes.seasoningSlots(mode);
         int seasoningWidth = seasoningCount * SLOT;
         int bandWidth = WIDTH - 2 * PADDING - (cooking ? COOKING_RESERVE : 0);
-        int clusterWidth = gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP + outputColumns * SLOT;
+        // A type with no result of its own — a smithing trim only decorates what it is given — is its
+        // ingredients and nothing else, so neither the arrow nor a result slot takes up room.
+        int clusterWidth = outputs > 0
+                ? gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP + outputColumns * SLOT
+                : gridColumns * SLOT;
         // The seasoning column is part of the recipe, not something parked beside it, so what gets
         // centred is the two of them together.
         int wholeWidth = clusterWidth + (seasoningCount > 0 ? CLUSTER_GAP + seasoningWidth : 0);

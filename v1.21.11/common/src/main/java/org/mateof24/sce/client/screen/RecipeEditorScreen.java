@@ -56,6 +56,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final Identifier BG_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_bg.png");
     static final Identifier SLOT_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_slot.png");
+    /** The empty-slot art the smithing table itself shows in its template slot. */
+    private static final Identifier TEMPLATE_TEXTURE =
+            Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_smithing_template.png");
     private static final Identifier ARROW_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_arrow.png");
 
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
@@ -116,6 +119,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private String matchData = "auto";
     private String idValue;
     private String tagValue = "";
+    /** Smithing trim only: the pattern the recipe applies, which is a field of the recipe. */
+    private String patternValue = "";
     private float pendingExp = 0.1f;
     private int pendingTime;
     private int heatIndex;
@@ -125,6 +130,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private EditBox expBox;
     private EditBox timeBox;
     private EditBox chanceBox;
+    private EditBox patternBox;
     /** Marks fields holding something unusable and completes the ones naming a registry entry. */
     private final FieldAssist fields = new FieldAssist();
 
@@ -161,6 +167,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private void initFromBase(RecipeDraft base) {
         carry = base != null ? base.carry : "auto";
+        patternValue = base != null ? base.trimPattern : "";
         matchData = base != null ? base.matchData : "auto";
         potCategory = CookingPot.category(base != null ? base.potCategory : null);
         potTag = CookingPot.seasoningTag(base != null ? base.potSeasoningTag : null);
@@ -322,6 +329,19 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         // Cobblemon's pot needs a book category on every recipe, and a new one has nothing to inherit it
         // from, so it is asked for rather than guessed.
+        // A trim recipe's pattern is a field of the recipe rather than something in a slot, so it goes
+        // in the row a type keeps for its own decisions, under a caption that says what it is.
+        if (RecipeModes.isSmithingTrim(mode) && layout.ruleRowY >= 0) {
+            patternBox = new EditBox(font, leftPos + 8, topPos + layout.ruleRowY, 224, 16,
+                    Component.translatable("sce.hint.trim_pattern"));
+            patternBox.setMaxLength(200);
+            patternBox.setValue(patternValue);
+            patternBox.setHint(Component.translatable("sce.hint.trim_pattern"));
+            patternBox.setResponder(value -> patternValue = value);
+            addRenderableWidget(patternBox);
+            fields.add(patternBox, FieldAssist.id(), FieldAssist.Source.TRIM_PATTERNS);
+        }
+
         if (RecipeModes.isCookingPot(mode) && layout.ruleRowY >= 0) {
             categoryRule = addRenderableWidget(Button.builder(
                             Component.translatable("sce.category." + potCategory),
@@ -647,6 +667,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private boolean resultHasData() {
+        if (outputCount == 0) {
+            return false;
+        }
         ItemStack stack = menu.outputSlot(0).getItem();
         return !stack.isEmpty() && !stack.getComponentsPatch().isEmpty();
     }
@@ -716,8 +739,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         } else {
             draft.kind = RecipeModes.kind(mode);
             draft.cooking = RecipeModes.cooking(mode);
-            draft.result = resolveOutput(0);
-            draft.resultCount = Math.max(1, resolveOutputCount(0));
+            // A smithing trim has no result to read: it gives back the piece it was given.
+            if (outputCount > 0) {
+                draft.result = resolveOutput(0);
+                draft.resultCount = Math.max(1, resolveOutputCount(0));
+            }
             if (RecipeModes.isCooking(mode)) {
                 draft.experience = pendingExp;
                 draft.cookingTime = pendingTime;
@@ -747,6 +773,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             draft.resultStack = !out.isEmpty() && !out.getComponentsPatch().isEmpty()
                     ? InheritingCraftingRecipe.writeStack(minecraft.level.registryAccess(), out) : "";
         }
+        draft.trimPattern = patternValue;
         draft.potCategory = potCategory;
         draft.potSeasoningTag = CookingPot.seasoningTag(potTag);
         draft.potProcessors.clear();
@@ -956,6 +983,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             }
         }
+        if (RecipeModes.isSmithing(mode)) {
+            // What the smithing table draws in its first slot: the outline of an empty template. Under
+            // whatever is put there, like the table's own, so it reads as the same slot.
+            Slot template = menu.inputSlot(0);
+            drawTemplateHint(graphics, leftPos + template.x, topPos + template.y);
+        }
+        if (outputCount == 0) {
+            return; // nothing to point an arrow at
+        }
         Slot firstOut = menu.outputSlot(0);
         int inputRight = 0;
         for (int i = 0; i < inputCount; i++) {
@@ -969,6 +1005,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             int arrowY = topPos + (firstOut.y + outBottom) / 2 - 8;
             graphics.blit(RenderPipelines.GUI_TEXTURED, ARROW_TEXTURE, arrowX, arrowY, 0.0F, 0.0F, 22, 15, 22, 15);
         }
+    }
+
+    /** The template slot's own art, drawn under anything the slot holds. */
+    private void drawTemplateHint(GuiGraphics graphics, int x, int y) {
+        graphics.blit(RenderPipelines.GUI_TEXTURED, TEMPLATE_TEXTURE, x, y, 0.0F, 0.0F, 16, 16, 16, 16);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
@@ -1050,6 +1091,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             int y = layout.ruleRowY - EditorLayout.LABEL_LINE + 1;
             graphics.drawString(font, Component.translatable("sce.label.match_data"), 8, y, 0xFF000000, false);
             graphics.drawString(font, Component.translatable("sce.label.carry"), 122, y, 0xFF000000, false);
+        }
+        if (RecipeModes.isSmithingTrim(mode) && layout.ruleRowY >= 0) {
+            graphics.drawString(font, Component.translatable("sce.label.trim_pattern"), 8,
+                    layout.ruleRowY - EditorLayout.LABEL_LINE + 1, 0xFF000000, false);
         }
         if (RecipeModes.isCookingPot(mode) && layout.ruleRowY >= 0) {
             graphics.drawString(font, Component.translatable("sce.label.pot_category"), 8,

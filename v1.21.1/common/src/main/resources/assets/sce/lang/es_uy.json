@@ -63,6 +63,8 @@
   "sce.mode.smoking": "Ahumador",
   "sce.mode.campfire": "Fogata",
   "sce.mode.stonecutting": "Cortapiedras",
+  "sce.mode.smithing_transform": "Herrería",
+  "sce.mode.smithing_trim": "Herrería: adorno",
   "sce.mode.create_mixing": "Create: Mezclando",
   "sce.mode.create_crushing": "Create: Trituración",
   "sce.mode.create_milling": "Create: Fresado",

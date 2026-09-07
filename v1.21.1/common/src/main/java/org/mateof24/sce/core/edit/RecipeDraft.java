@@ -17,6 +17,8 @@ public final class RecipeDraft {
     public enum Kind {
         CRAFTING_SHAPELESS, CRAFTING_SHAPED, COOKING, STONECUTTING, CREATE_PROCESSING, MECHANICAL_CRAFTING,
         SEQUENCED_ASSEMBLY,
+        /** The smithing table's two recipes: one upgrades an item, the other only decorates it. */
+        SMITHING_TRANSFORM, SMITHING_TRIM,
         /** Cobblemon's campfire pot: the two crafting shapes again, with the pot's own fields around them. */
         COOKING_POT, COOKING_POT_SHAPELESS
     }
@@ -197,6 +199,8 @@ public final class RecipeDraft {
             case CREATE_PROCESSING -> 6;
             case MECHANICAL_CRAFTING -> MECHANICAL_SIZE * MECHANICAL_SIZE;
             case SEQUENCED_ASSEMBLY -> 1; // the single base ingredient the sequence starts from
+            // The smithing table's three: template, base and addition, always in that order.
+            case SMITHING_TRANSFORM, SMITHING_TRIM -> 3;
             // The pot is the two crafting shapes over again, so it needs the same slots they do.
             case COOKING_POT -> draft.width * draft.height;
             case COOKING_POT_SHAPELESS -> 9;

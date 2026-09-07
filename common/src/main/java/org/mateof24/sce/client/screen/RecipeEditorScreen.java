@@ -48,6 +48,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final ResourceLocation BG_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_bg.png");
     private static final ResourceLocation SLOT_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_slot.png");
+    private static final ResourceLocation TEMPLATE_TEXTURE =
+            new ResourceLocation("sce", "textures/gui/sce_smithing_template.png");
     private static final ResourceLocation ARROW_TEXTURE = new ResourceLocation("sce", "textures/gui/sce_arrow.png");
 
     // Carries the cursor position across a menu re-open so it isn't recentered (see reopen/init).
@@ -568,6 +570,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private boolean resultHasData() {
+        if (outputCount == 0) {
+            return false;
+        }
         ItemStack stack = menu.outputSlot(0).getItem();
         return !stack.isEmpty() && stack.hasTag();
     }
@@ -632,8 +637,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         } else {
             draft.kind = RecipeModes.kind(mode);
             draft.cooking = RecipeModes.cooking(mode);
-            draft.result = resolveOutput(0);
-            draft.resultCount = Math.max(1, resolveOutputCount(0));
+            // A smithing trim has no result to read: it gives back the piece it was given.
+            if (outputCount > 0) {
+                draft.result = resolveOutput(0);
+                draft.resultCount = Math.max(1, resolveOutputCount(0));
+            }
             if (RecipeModes.isCooking(mode)) {
                 draft.experience = pendingExp;
                 draft.cookingTime = pendingTime;
@@ -851,6 +859,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 graphics.drawString(font, "%", x + 1, y + 1, 0xB07000, false);
             }
         }
+        if (RecipeModes.isSmithing(mode)) {
+            // What the smithing table draws in its first slot: the outline of an empty template. Under
+            // whatever is put there, like the table's own, so it reads as the same slot.
+            Slot template = menu.inputSlot(0);
+            drawTemplateHint(graphics, leftPos + template.x, topPos + template.y);
+        }
+        if (outputCount == 0) {
+            return; // nothing to point an arrow at
+        }
         Slot firstOut = menu.outputSlot(0);
         int inputRight = 0;
         for (int i = 0; i < inputCount; i++) {
@@ -864,6 +881,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             int arrowY = topPos + (firstOut.y + outBottom) / 2 - 8;
             graphics.blit(ARROW_TEXTURE, arrowX, arrowY, 22, 15, 0.0F, 0.0F, 22, 15, 22, 15);
         }
+    }
+
+    /** The template slot's own art, drawn under anything the slot holds. */
+    private void drawTemplateHint(GuiGraphics graphics, int x, int y) {
+        graphics.blit(TEMPLATE_TEXTURE, x, y, 16, 16, 0.0F, 0.0F, 16, 16, 16, 16);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y) {
