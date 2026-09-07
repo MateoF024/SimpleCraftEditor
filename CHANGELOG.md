@@ -1,5 +1,34 @@
 # Simple Craft Editor - Changelog
 
+## Version 1.2.0
+
+Five Minecraft versions, three more recipe types, and recipes that can care about the data on an item.
+
+### Added
+
+- Minecraft **1.21.11**, **26.1.2** and **26.2**, on Fabric and NeoForge
+- **REI** support, beside JEI and EMI: drag items and fluids onto the editor's slots, and press the key over its list to open a recipe
+- **Cobblemon's campfire pot**: both of its recipe types, with the seasoning rules — which item tag a player may add to the pot, and which of the seven properties the dish takes from it
+- **Smithing table upgrades**: diamond gear into netherite, and whatever else a pack adds
+- **Data as part of a crafting recipe.** A recipe can require the data on the items placed in the grid, so it works with the chest actually named "Pepito" and not with any chest; and the result can be baked in exactly as it was left. Four ways to decide where the crafted result's data comes from
+- **Shift + the editor key** over an item with no recipe starts a new one that makes it
+- A tag in a slot now shows the items the tag holds, one after another, instead of a stand-in
+- Every button whose label does not say what it will do has a line that does
+
+### Fixed
+
+- The editor key could not find a recipe whose interesting output was not its main result — Create's crushing recipes, among others
+- Editing a recipe with JEI installed froze the game for a second or two while JEI rebuilt itself
+- Typing a recipe id that does not exist said the recipe had been written by a script
+- Large parts of the interface appeared in English when playing in Spanish
+
+### Changed
+
+- Saving returns to the recipe list, where the recipe now is, and messages fade instead of staying on screen
+- A recipe whose result carries components — a suspicious stew, a named item — opens in the visual editor and keeps those components, rather than falling back to raw JSON
+
+---
+
 ## Version 1.1.0
 
 A stability release. Simple Craft Editor now behaves the same in a large modpack as it does on its own.
