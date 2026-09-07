@@ -8,6 +8,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.display.RecipeDisplay;
+import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 import net.minecraft.world.level.Level;
 import org.mateof24.sce.core.SceDebug;
@@ -110,6 +111,15 @@ public final class RecipeOutputIndex {
         Set<Item> outputs = new LinkedHashSet<>(2);
         try {
             for (RecipeDisplay display : holder.value().display()) {
+                if (display.result() instanceof SlotDisplay.SmithingTrimDemoSlotDisplay) {
+                    // A decoration, not a product. A trim recipe takes armour it is given and puts a
+                    // pattern on it, and the game marks that result as a *demo*: it resolves to every
+                    // piece the pattern fits, wearing it. Counting those as ways to obtain the piece
+                    // buries the one recipe that actually makes it under nine that only paint it — and
+                    // it is what 1.20.1 and 1.21.1 already do, where such a recipe names no result at
+                    // all and so never entered this table.
+                    continue;
+                }
                 for (ItemStack stack : display.result().resolveForStacks(context)) {
                     if (!stack.isEmpty()) {
                         outputs.add(stack.getItem());
