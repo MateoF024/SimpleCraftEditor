@@ -9,10 +9,10 @@ import org.mateof24.sce.core.edit.RecipeModes;
  *
  * <p>The panel is one fixed-size texture, so the work is dividing the space between the id row and the
  * player inventory among the rows a type actually uses. Types differ a lot: crafting shows a 3x3 grid and
- * a tag row, Create adds an amount row and a fluid row under a 3x2 grid, mechanical crafting is a 5x5
- * square, and cooking and stonecutting need a single slot. Fixed positions sized for the busiest type
- * left the sparse ones with a hole above the inventory and a grid pushed off-centre by a column of fields
- * that were not there.
+ * a value row, Create adds an amount row under a grid whose shape is its own recipe's limits, mechanical
+ * crafting is a 5x5 square, and cooking and stonecutting need a single slot. Fixed positions sized for
+ * the busiest type left the sparse ones with a hole above the inventory and a grid pushed off-centre by a
+ * column of fields that were not there.
  *
  * <p>Two rules produce the layout. Vertically, the rows under the recipe hang from the bottom of the free
  * band and the recipe cluster is centred in what is left between the id row and the first of them. Hanging them from the bottom is what
@@ -65,7 +65,14 @@ public final class EditorLayout {
     public final int outputY;
     public final int outputColumns;
 
-    /** Row holding the tag field and its buttons; every type has one. */
+    /**
+     * Row holding the value field and its buttons; every type has one.
+     *
+     * <p>It used to be two rows for Create — one for a tag, one for a fluid — which did the same job
+     * (put something in the slot that was picked last), looked the same, and between them took the
+     * sixteen pixels that mixing's nine-slot grid needs. One row, and what gets put in is decided by
+     * what the picked slot accepts.
+     */
     public final int tagRowY;
 
     /**
@@ -75,8 +82,6 @@ public final class EditorLayout {
     public final int ruleRowY;
     /** Create's chance/time/heat row, or -1 for types without one. */
     public final int extraRowY;
-    /** Create's fluid row, or -1 for types that take no fluids. */
-    public final int fluidRowY;
 
     /** Left edge of the cooking xp/time column, or -1 when the type has no side column. */
     public final int sideX;
@@ -108,18 +113,23 @@ public final class EditorLayout {
         int inputs = RecipeModes.inputCount(mode);
         int outputs = RecipeModes.outputCount(mode);
 
-        gridColumns = mechanical ? RecipeDraft.MECHANICAL_SIZE : (RecipeModes.usesGrid(mode) ? 3 : 1);
+        // Create's types bring their own shape, because their slot counts are their own recipe's limits
+        // and range from one in and one out to eleven in and six out; everything else keeps the shape it
+        // has always had.
+        int columnsFromType = RecipeModes.inputColumns(mode);
+        gridColumns = columnsFromType > 0 ? columnsFromType
+                : (mechanical ? RecipeDraft.MECHANICAL_SIZE : (RecipeModes.usesGrid(mode) ? 3 : 1));
         gridRows = ceilDiv(inputs, gridColumns);
-        // Create is the only type with enough results to want a second column of them.
-        outputColumns = create ? 2 : 1;
+        int outputColumnsFromType = RecipeModes.outputColumns(mode);
+        outputColumns = outputColumnsFromType > 0 ? outputColumnsFromType : 1;
         int outputRows = ceilDiv(outputs, outputColumns);
 
         // ---- vertical: hang the rows from the bottom of the band, then centre the recipe above them
         int recipeHeight = Math.max(gridRows, outputRows) * SLOT;
-        // Rows between the recipe and the tag row: Create's amount and fluid rows, or a type's own rule
-        // row, which is taller than a plain one because it carries a caption.
-        int middleRows = (create ? 2 : 0) + (ruleRow ? 1 : 0);
-        int middleHeight = (create ? 2 * ROW : 0) + (ruleRow ? ROW + LABEL_LINE : 0);
+        // Rows between the recipe and the value row: Create's amount row, or a type's own rule row,
+        // which is taller than a plain one because it carries a caption.
+        int middleRows = (create ? 1 : 0) + (ruleRow ? 1 : 0);
+        int middleHeight = (create ? ROW : 0) + (ruleRow ? ROW + LABEL_LINE : 0);
         int stacked = recipeHeight + middleHeight + ROW;
         int band = BAND_BOTTOM - BAND_TOP;
         int gap = clamp((band - stacked) / (middleRows + 1), MIN_ROW_GAP, MAX_ROW_GAP);
@@ -134,12 +144,10 @@ public final class EditorLayout {
             ruleRowY = -1;
         }
         if (create) {
-            fluidRowY = cursor - gap - ROW;
-            extraRowY = fluidRowY - gap - ROW;
+            extraRowY = cursor - gap - ROW;
             cursor = extraRowY;
         } else {
             extraRowY = -1;
-            fluidRowY = -1;
         }
         // Centred between the id row above and the first thing below, measured to the pixel each of them
         // actually paints: a caption is a line of text with a pixel of air under it, not a full row, and

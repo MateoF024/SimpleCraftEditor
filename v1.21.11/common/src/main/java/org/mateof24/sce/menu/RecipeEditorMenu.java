@@ -22,12 +22,16 @@ import org.mateof24.sce.registry.SceMenus;
  * items placed there behave exactly like a crafting table (real cursor interaction, splitting, dragging,
  * hotbar swaps, shift-click) and are returned to the player when the screen closes. The player inventory
  * slots are the real inventory. The slot layout depends on the recipe type: a 3x3 grid for crafting, a
- * single input for cooking/stonecutting, and a 2x3 input block with a column of outputs for Create.
+ * single input for cooking/stonecutting, and for Create whatever shape its own recipe class allows,
+ * which is anything from one slot in and one out to nine items plus two tanks in and six out.
  */
 public class RecipeEditorMenu extends AbstractContainerMenu {
-    // Sized for the largest layout any type uses: mechanical crafting's square grid.
-    private final Container grid = new SimpleContainer(RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE);
-    private final Container output = new SimpleContainer(4);
+    // Sized for the largest layout any type uses — mechanical crafting's square grid on one side, Bulk
+    // Washing's twelve results on the other — and taken from the table so that adding a type with more
+    // slots than these cannot quietly drop the surplus.
+    private final Container grid = new SimpleContainer(
+            Math.max(RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE, RecipeModes.maxInputCount()));
+    private final Container output = new SimpleContainer(RecipeModes.maxOutputCount());
 
     private final Identifier editId;
     private final int mode;
@@ -54,10 +58,12 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         // around them, which are placed from the same numbers.
         EditorLayout layout = new EditorLayout(this.mode);
         for (int i = 0; i < inputCount; i++) {
-            addSlot(new Slot(grid, i, layout.inputSlotX(i), layout.inputSlotY(i)));
+            addSlot(slot(grid, i, layout.inputSlotX(i), layout.inputSlotY(i),
+                    RecipeModes.isFluidInput(this.mode, i)));
         }
         for (int i = 0; i < outputCount; i++) {
-            addSlot(new Slot(output, i, layout.outputSlotX(i), layout.outputSlotY(i)));
+            addSlot(slot(output, i, layout.outputSlotX(i), layout.outputSlotY(i),
+                    RecipeModes.isFluidOutput(this.mode, i)));
         }
 
         for (int row = 0; row < 3; row++) {
@@ -68,6 +74,19 @@ public class RecipeEditorMenu extends AbstractContainerMenu {
         for (int col = 0; col < 9; col++) {
             addSlot(new Slot(inventory, col, 39 + col * 18, EditorLayout.HOTBAR_Y));
         }
+    }
+
+    /**
+     * A recipe slot. A fluid one takes no item at all: what goes in it is a quantity typed into the value
+     * row, and letting a bucket be dropped there would look like it had worked when nothing had been set.
+     */
+    private static Slot slot(Container container, int index, int x, int y, boolean fluid) {
+        return fluid ? new Slot(container, index, x, y) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return false;
+            }
+        } : new Slot(container, index, x, y);
     }
 
     public int mode() {

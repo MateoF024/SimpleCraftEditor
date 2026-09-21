@@ -15,6 +15,7 @@ import org.mateof24.sce.client.ClientRecipeIds;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Marks a text field when what is typed in it cannot be used, and completes the ones that name something
@@ -47,6 +48,8 @@ public final class FieldAssist {
         NONE,
         ITEMS,
         ITEM_TAGS,
+        /** Items, or item tags once the text starts with {@code #}: the pair the value row offers. */
+        ITEMS_OR_TAGS,
         /** Fluids, or fluid tags once the text starts with {@code #}. */
         FLUIDS,
         /** Every recipe on the server, including the ones this mod has authored. */
@@ -65,7 +68,12 @@ public final class FieldAssist {
     private static final int INVALID_TEXT = 0xFFFF5555;
     private static final int VALID_TEXT = 0xFFE0E0E0;
 
-    private record Field(EditBox box, Predicate<String> valid, Source source) {
+    /**
+     * One field being watched. The source is a supplier rather than a value because the editor's value
+     * row changes what it is naming as the author picks a different slot: a fluid slot completes against
+     * fluids and every other slot against items, and the row itself is built once.
+     */
+    private record Field(EditBox box, Predicate<String> valid, Supplier<Source> source) {
     }
 
     private final List<Field> fields = new ArrayList<>();
@@ -81,16 +89,20 @@ public final class FieldAssist {
         close();
     }
 
-    public void add(EditBox box, Predicate<String> valid, Source source) {
+    public void add(EditBox box, Predicate<String> valid, Supplier<Source> source) {
         if (box == null) {
             return;
         }
         fields.add(new Field(box, valid, source));
-        if (source == Source.RECIPES) {
+        if (source.get() == Source.RECIPES) {
             // The only list that is not on this side already. Asked for as the screen is built rather
             // than as the field is typed in, so it is here before there is anything to complete.
             ClientRecipeIds.request();
         }
+    }
+
+    public void add(EditBox box, Predicate<String> valid, Source source) {
+        add(box, valid, () -> source);
     }
 
     public void add(EditBox box, Predicate<String> valid) {
@@ -148,9 +160,12 @@ public final class FieldAssist {
             String text = field.box().getValue();
             boolean bad = !text.isBlank() && !field.valid().test(text);
             field.box().setTextColor(bad ? INVALID_TEXT : VALID_TEXT);
-            if (focused == null && field.box().isFocused() && field.source() != Source.NONE) {
-                focused = field.box();
-                source = field.source();
+            if (focused == null && field.box().isFocused()) {
+                Source asked = field.source().get();
+                if (asked != Source.NONE) {
+                    focused = field.box();
+                    source = asked;
+                }
             }
         }
         if (focused != target) {
@@ -225,6 +240,14 @@ public final class FieldAssist {
         List<String> out = new ArrayList<>();
         switch (source) {
             case ITEMS -> BuiltInRegistries.ITEM.keySet().forEach(id -> out.add(id.toString()));
+            case ITEMS_OR_TAGS -> {
+                if (tagged) {
+                    BuiltInRegistries.ITEM.getTags()
+                            .forEach(tag -> out.add("#" + tag.key().location()));
+                } else {
+                    BuiltInRegistries.ITEM.keySet().forEach(id -> out.add(id.toString()));
+                }
+            }
             case ITEM_TAGS -> BuiltInRegistries.ITEM.getTags()
                     .forEach(tag -> out.add(tag.key().location().toString()));
             case FLUIDS -> {

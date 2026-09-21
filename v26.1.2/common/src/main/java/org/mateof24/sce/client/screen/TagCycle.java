@@ -1,5 +1,7 @@
 package org.mateof24.sce.client.screen;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.util.Util;
@@ -10,6 +12,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 
@@ -40,6 +44,9 @@ public final class TagCycle {
 
     private static final Map<Identifier, List<ItemStack>> ITEMS = new HashMap<>();
     private static final Map<Identifier, List<Fluid>> FLUIDS = new HashMap<>();
+    private static final Map<Identifier, List<ItemStack>> BLOCKS = new HashMap<>();
+    /** Keyed by the ingredient's own JSON, which is the only name a shape like this has. */
+    private static final Map<String, List<ItemStack>> RAW = new HashMap<>();
 
     private TagCycle() {
     }
@@ -48,6 +55,8 @@ public final class TagCycle {
     public static void forget() {
         ITEMS.clear();
         FLUIDS.clear();
+        BLOCKS.clear();
+        RAW.clear();
     }
 
     /** Which step of the walk we are on. Shared by every slot, so a screen full of tags moves as one. */
@@ -137,5 +146,98 @@ public final class TagCycle {
     public static Fluid fluid(Identifier tag) {
         List<Fluid> all = fluids(tag);
         return all.isEmpty() ? Fluids.EMPTY : all.get(Math.floorMod(step(), all.size()));
+    }
+
+    // ------------------------------------------------------------------ carried-through ingredients
+
+    /**
+     * What an ingredient this editor does not model actually admits, flattened into items and walked
+     * through like a tag.
+     *
+     * <p>Create's compatibility recipes wrap another mod's item in {@code neoforge:compound}, write
+     * alternatives as a bare array, and name block tags that are not item tags. A slot showing only the
+     * first of those says less than it should: a recipe viewer shows every option in turn, and an author
+     * comparing the two has no way to tell the editor is keeping the rest.
+     */
+    public static List<ItemStack> rawOptions(JsonElement ingredient) {
+        if (ingredient == null) {
+            return List.of();
+        }
+        String key = ingredient.toString();
+        List<ItemStack> cached = RAW.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        List<ItemStack> found = new ArrayList<>();
+        collect(ingredient, found);
+        List<ItemStack> result = List.copyOf(found);
+        RAW.put(key, result);
+        return result;
+    }
+
+    /** The one option on show right now, as a copy, or empty when nothing inside it names an item. */
+    public static ItemStack rawItem(JsonElement ingredient) {
+        List<ItemStack> all = rawOptions(ingredient);
+        return all.isEmpty() ? ItemStack.EMPTY : all.get(Math.floorMod(step(), all.size())).copy();
+    }
+
+    /**
+     * Walks whatever shape the ingredient has. {@code ingredients} and {@code values} are the two names
+     * ingredient types use for the list inside them; a {@code tag} is tried as an item tag and then as a
+     * block tag, which is how {@code neoforge:block_tag} resolves without this having to know its name.
+     */
+    private static void collect(JsonElement element, List<ItemStack> out) {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement option : element.getAsJsonArray()) {
+                collect(option, out);
+            }
+            return;
+        }
+        if (!element.isJsonObject()) {
+            return;
+        }
+        JsonObject object = element.getAsJsonObject();
+        if (object.has("item") && object.get("item").isJsonPrimitive()) {
+            Identifier id = Identifier.tryParse(object.get("item").getAsString());
+            Item item = id == null ? null : BuiltInRegistries.ITEM.getValue(id);
+            if (item != null && item != Items.AIR) {
+                out.add(new ItemStack(item));
+            }
+        } else if (object.has("tag") && object.get("tag").isJsonPrimitive()) {
+            Identifier id = Identifier.tryParse(object.get("tag").getAsString());
+            if (id != null) {
+                List<ItemStack> members = items(id);
+                if (members.isEmpty()) {
+                    members = blocks(id);
+                }
+                out.addAll(members);
+            }
+        }
+        for (String nested : new String[]{"ingredients", "values"}) {
+            if (object.has(nested)) {
+                collect(object.get(nested), out);
+            }
+        }
+    }
+
+    /** The items of the blocks in a block tag, for the ingredient types that name one. */
+    private static List<ItemStack> blocks(Identifier tag) {
+        List<ItemStack> cached = BLOCKS.get(tag);
+        if (cached != null) {
+            return cached;
+        }
+        List<ItemStack> found = new ArrayList<>();
+        for (Holder<Block> holder : BuiltInRegistries.BLOCK.getTagOrEmpty(TagKey.create(Registries.BLOCK, tag))) {
+            ItemStack stack = new ItemStack(holder.value());
+            if (!stack.isEmpty()) {
+                found.add(stack);
+            }
+        }
+        List<ItemStack> result = List.copyOf(found);
+        BLOCKS.put(tag, result);
+        return result;
     }
 }

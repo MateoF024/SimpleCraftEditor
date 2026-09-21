@@ -56,6 +56,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private static final Identifier BG_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_bg.png");
     static final Identifier SLOT_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_slot.png");
+    /** The same slot in a cooler grey, for the ones that take a quantity of fluid instead of an item. */
+    private static final Identifier FLUID_SLOT_TEXTURE =
+            Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_fluid_slot.png");
     /** The empty-slot art the smithing table shows in its template slot. */
     private static final Identifier TEMPLATE_TEXTURE =
             Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_smithing_upgrade.png");
@@ -80,6 +83,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private final IngredientValue[] overlayOut;
     private final int[] overlayOutCount;
     private final float[] outputChance;
+    /** Per-result keys this editor does not model, kept so a result with components survives a save. */
+    private final java.util.Map<String, com.google.gson.JsonElement>[] outputExtra;
 
     private int selectedInput = -1;
     private int selectedOutput = -1;
@@ -118,13 +123,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     /** Whether the ingredients' data is part of the match: {@code auto}, {@code ignore} or {@code require}. */
     private String matchData = "auto";
     private String idValue;
-    private String tagValue = "";
+    /** What the value row holds: an item or fluid id, or a tag with a leading {@code #}. */
+    private String valueText = "";
+    private String amountText = Integer.toString(IngredientValue.BUCKET);
     private float pendingExp = 0.1f;
     private int pendingTime;
     private int heatIndex;
+    /** Create's deployer flag, for the two types that have one. */
+    private boolean keepHeldItem;
 
     private EditBox idBox;
-    private EditBox tagBox;
+    private EditBox valueBox;
+    private EditBox amountBox;
     private EditBox expBox;
     private EditBox timeBox;
     private EditBox chanceBox;
@@ -144,6 +154,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.overlayOut = new IngredientValue[outputCount];
         this.overlayOutCount = new int[outputCount];
         this.outputChance = new float[outputCount];
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, com.google.gson.JsonElement>[] extras = new java.util.Map[outputCount];
+        this.outputExtra = extras;
         this.idValue = menu.editId() != null ? menu.editId().toString() : "sce:new_recipe";
         this.keptType = keptTypeOf(menu.baseDraft(), mode);
         // Once per opening, in case the tags were reloaded while the last screen was closed.
@@ -180,6 +193,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             overlayOut[i] = IngredientValue.empty();
             overlayOutCount[i] = 1;
             outputChance[i] = 1.0f;
+            outputExtra[i] = new java.util.LinkedHashMap<>();
         }
         // A new cooking recipe starts at the time vanilla uses for its type. Leaving it at zero produces
         // a recipe that crafts but divides by zero in the progress arrow of a recipe viewer.
@@ -208,6 +222,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             }
             mirrored = base.acceptMirrored;
+        } else if (base.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
+            // Create writes a recipe's ingredients in file order and tells an item from a fluid by the
+            // shape of the entry, not by where it sits. The editor keeps its tanks after its item slots,
+            // so they are dealt out by kind: otherwise mixing's water landed in an item slot, where it
+            // could not be edited, and the tanks sat empty beside it.
+            int itemSlot = 0;
+            int fluidSlot = RecipeModes.itemInputs(mode);
+            for (IngredientValue value : base.inputs) {
+                if (value == null || value.isEmpty()) {
+                    continue;
+                }
+                int target = value.isFluid() ? fluidSlot++ : itemSlot++;
+                if (target >= 0 && target < inputCount && target < overlay.length) {
+                    overlay[target] = value;
+                }
+            }
         } else {
             for (int i = 0; i < base.inputs.size() && i < overlay.length; i++) {
                 overlay[i] = base.input(i);
@@ -215,13 +245,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (base.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
-            for (int i = 0; i < base.results.size() && i < outputCount; i++) {
-                RecipeDraft.ResultEntry entry = base.results.get(i);
-                overlayOut[i] = entry.item;
-                overlayOutCount[i] = entry.count;
-                outputChance[i] = entry.chance;
+            int itemResult = 0;
+            int fluidResult = RecipeModes.itemOutputs(mode);
+            for (RecipeDraft.ResultEntry entry : base.results) {
+                if (entry.item == null || entry.item.isEmpty()) {
+                    continue;
+                }
+                int target = entry.item.isFluid() ? fluidResult++ : itemResult++;
+                if (target < 0 || target >= outputCount) {
+                    continue;
+                }
+                overlayOut[target] = entry.item;
+                overlayOutCount[target] = entry.count;
+                outputChance[target] = entry.chance;
+                outputExtra[target].putAll(entry.extra);
             }
             heatIndex = heatIndexOf(base.heat);
+            keepHeldItem = base.keepHeldItem;
         } else if (outputCount > 0) {
             overlayOut[0] = base.result;
             overlayOutCount[0] = base.resultCount;
@@ -266,8 +306,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         return mechanical ? RecipeDraft.MECHANICAL_SIZE : 3;
     }
 
-    private boolean mixing() {
-        return "create:mixing".equals(RecipeModes.createType(mode));
+    /** Whether this type can require heat. Mixing and compacting can; nothing else does. */
+    private boolean heated() {
+        return RecipeModes.allowsHeat(mode);
+    }
+
+    /** Whether the slot picked last is one that takes a fluid rather than an item. */
+    private boolean selectedIsFluid() {
+        return selectedIsOutput
+                ? selectedOutput >= 0 && RecipeModes.isFluidOutput(mode, selectedOutput)
+                : selectedInput >= 0 && RecipeModes.isFluidInput(mode, selectedInput);
     }
 
     @Override
@@ -345,19 +393,41 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     .build());
         }
 
-        int tagRowY = layout.tagRowY;
-        tagBox = new EditBox(font, leftPos + 8, topPos + tagRowY, 98, 16, Component.translatable("sce.hint.tag"));
-        tagBox.setMaxLength(200);
-        tagBox.setValue(tagValue);
-        tagBox.setHint(Component.translatable("sce.hint.tag_id"));
-        tagBox.setResponder(s -> tagValue = s);
-        addRenderableWidget(tagBox);
-        fields.add(tagBox, FieldAssist.id(), FieldAssist.Source.ITEM_TAGS);
-        addRenderableWidget(Button.builder(Component.translatable("sce.button.set_tag"), b -> applyTag())
-                .bounds(leftPos + 110, topPos + tagRowY, 54, 16)
-                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.set_tag"))).build());
+        // One row to put something in the slot that was picked last, whatever kind of something that slot
+        // takes. It used to be two rows that looked alike - one for a tag, one for a fluid - and between
+        // them they took the sixteen pixels that mixing's nine-slot grid needs. What gets written is
+        // decided by the slot rather than guessed from the text: a fluid slot reads the id against the
+        // fluid registry, an item slot against the item registry, and a leading '#' means a tag of
+        // whichever of the two it is.
+        int valueRowY = layout.tagRowY;
+        boolean fluids = RecipeModes.usesFluids(mode);
+        int valueWidth = fluids ? 92 : 126;
+        valueBox = new EditBox(font, leftPos + 8, topPos + valueRowY, valueWidth, 16,
+                Component.translatable("sce.hint.value"));
+        valueBox.setMaxLength(200);
+        valueBox.setValue(valueText);
+        valueBox.setHint(Component.translatable("sce.hint.value_id"));
+        valueBox.setResponder(s -> valueText = s);
+        addRenderableWidget(valueBox);
+        fields.add(valueBox, FieldAssist.idOrTag(),
+                () -> selectedIsFluid() ? FieldAssist.Source.FLUIDS : FieldAssist.Source.ITEMS_OR_TAGS);
+        if (fluids) {
+            amountBox = new EditBox(font, leftPos + 104, topPos + valueRowY, 30, 16,
+                    Component.translatable("sce.hint.amount"));
+            amountBox.setValue(amountText);
+            amountBox.setResponder(s -> amountText = s);
+            // An amount is a fluid's whole quantity; an item ingredient has none and a result counts in
+            // its own field, so the box only accepts typing while a fluid slot is the one picked.
+            amountBox.setEditable(selectedIsFluid());
+            addRenderableWidget(amountBox);
+            fields.add(amountBox, FieldAssist.intAtLeast(1));
+        }
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.set_value"), b -> applyValue())
+                .bounds(leftPos + 138, topPos + valueRowY, 44, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                            Component.translatable(fluids ? "sce.tooltip.set_value_fluid" : "sce.tooltip.set_value"))).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
-                .bounds(leftPos + 168, topPos + tagRowY, 64, 16)
+                .bounds(leftPos + 186, topPos + valueRowY, 46, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.clear_slot"))).build());
 
         if (mechanical) {
@@ -388,7 +458,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (create) {
-            // Create's grid is only two rows tall, so its extra controls sit in the free row below it.
+            // Create's extra controls sit in the free row below the recipe. Which of them are there is
+            // the type's own business: Create refuses a recipe that names a duration or a heat it cannot
+            // use, so a field that could only ever produce a rejected recipe is not drawn at all.
             chanceBox = new EditBox(font, leftPos + 52, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.chance"));
             chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
             chanceBox.setResponder(s -> {
@@ -398,13 +470,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             });
             addRenderableWidget(chanceBox);
             fields.add(chanceBox, FieldAssist.decimalBetween(0.0f, 1.0f));
-            timeBox = new EditBox(font, leftPos + 124, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.time"));
-            timeBox.setValue(Integer.toString(pendingTime));
-            timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
-            addRenderableWidget(timeBox);
-            // Create fills in its own duration when the recipe leaves this at zero.
-            fields.add(timeBox, FieldAssist.intAtLeast(0));
-            if (mixing()) {
+            if (RecipeModes.allowsDuration(mode)) {
+                timeBox = new EditBox(font, leftPos + 124, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.time"));
+                timeBox.setValue(Integer.toString(pendingTime));
+                timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
+                addRenderableWidget(timeBox);
+                // Create fills in its own duration when the recipe leaves this at zero.
+                fields.add(timeBox, FieldAssist.intAtLeast(0));
+            }
+            if (heated()) {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
                     heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
                     rebuildWidgets();
@@ -412,22 +486,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.heat"))).build());
             }
 
-            // Only Create takes fluids, and it takes them as an amount rather than as a bucket item.
-            fluidBox = new EditBox(font, leftPos + 8, topPos + layout.fluidRowY, 110, 16, Component.translatable("sce.hint.fluid"));
-            fluidBox.setMaxLength(200);
-            fluidBox.setValue(fluidValue);
-            fluidBox.setHint(Component.translatable("sce.hint.fluid_id"));
-            fluidBox.setResponder(s -> fluidValue = s);
-            addRenderableWidget(fluidBox);
-            fields.add(fluidBox, FieldAssist.idOrTag(), FieldAssist.Source.FLUIDS);
-            fluidAmountBox = new EditBox(font, leftPos + 122, topPos + layout.fluidRowY, 40, 16, Component.translatable("sce.hint.amount"));
-            fluidAmountBox.setValue(fluidAmountValue);
-            fluidAmountBox.setResponder(s -> fluidAmountValue = s);
-            addRenderableWidget(fluidAmountBox);
-            fields.add(fluidAmountBox, FieldAssist.intAtLeast(1));
-            addRenderableWidget(Button.builder(Component.translatable("sce.button.set_fluid"), b -> applyFluid())
-                    .bounds(leftPos + 166, topPos + layout.fluidRowY, 66, 16)
-                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.set_fluid"))).build());
+            if (RecipeModes.hasKeepHeldItem(mode)) {
+                // Takes the room the duration and the heat would have used, neither of which these two
+                // types have. This is the flag behind every waxing and de-oxidising recipe in the game.
+                addRenderableWidget(Button.builder(Component.translatable("sce.button.keep_held",
+                        Component.translatable(keepHeldItem ? "sce.toggle.on" : "sce.toggle.off")), b -> {
+                    keepHeldItem = !keepHeldItem;
+                    rebuildWidgets();
+                }).bounds(leftPos + 96, topPos + layout.extraRowY, 136, 16)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.keep_held"))).build());
+            }
         }
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + EditorLayout.BUTTON_ROW_Y, 52, 20).build());
@@ -522,85 +590,106 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (slotId >= 0 && slotId < inputCount) {
             selectedInput = slotId;
             selectedIsOutput = false;
-            IngredientValue current = overlay[slotId];
-            tagValue = current != null && current.kind() == IngredientValue.Kind.TAG ? current.id().toString() : "";
-            if (tagBox != null) {
-                tagBox.setValue(tagValue);
-            }
-            syncFluidBoxes(current);
+            syncValueRow(overlay[slotId]);
         } else if (slotId >= inputCount && slotId < inputCount + outputCount) {
             selectedOutput = slotId - inputCount;
             selectedIsOutput = true;
             if (chanceBox != null) {
                 chanceBox.setValue(Float.toString(outputChance[selectedOutput]));
             }
-            syncFluidBoxes(overlayOut[selectedOutput]);
+            syncValueRow(overlayOut[selectedOutput]);
         }
         super.slotClicked(slot, slotId, mouseButton, type);
     }
 
-    /** Mirrors the picked slot's fluid, if it holds one, into the fluid row so it can be adjusted. */
-    private void syncFluidBoxes(IngredientValue current) {
-        if (fluidBox == null) {
+    /**
+     * Mirrors the picked slot into the value row, so what is in it can be read and adjusted rather than
+     * retyped. An ingredient this editor only carries through has no text form to show, so the row is
+     * left empty for it: whatever is typed there replaces it outright, which is the only thing that
+     * could be meant.
+     */
+    private void syncValueRow(IngredientValue current) {
+        if (valueBox == null) {
             return;
         }
-        if (current != null && current.isFluid()) {
-            fluidValue = (current.isFluidTag() ? "#" : "") + current.id();
-            fluidAmountValue = Integer.toString(current.amount());
-        } else {
-            fluidValue = "";
-        }
-        fluidBox.setValue(fluidValue);
-        if (fluidAmountBox != null) {
-            fluidAmountBox.setValue(fluidAmountValue);
-        }
-    }
-
-    private void applyTag() {
-        if (selectedInput < 0) {
-            status.set(Component.translatable("sce.status.click_input_first"));
-            return;
-        }
-        if (!menu.gridItem(selectedInput).isEmpty()) {
-            status.set(Component.translatable("sce.status.clear_slot_first"));
-            return;
-        }
-        Identifier tag = Identifier.tryParse(tagValue);
-        if (tag == null) {
-            status.set(Component.translatable("sce.status.invalid_tag"));
-            return;
-        }
-        overlay[selectedInput] = IngredientValue.tag(tag);
-    }
-
-    /** Puts a fluid, with its millibucket amount, into whichever recipe slot was picked last. */
-    private void applyFluid() {
-        // A leading '#' means a fluid tag, matching how tags are written everywhere else in Minecraft.
-        String raw = fluidValue.trim();
-        boolean tagged = raw.startsWith("#");
-        Identifier fluid = Identifier.tryParse(tagged ? raw.substring(1) : raw);
-        if (fluid == null) {
-            status.set(Component.translatable("sce.status.invalid_fluid"));
-            return;
-        }
-        int amount = Math.max(1, parseInt(fluidAmountValue, IngredientValue.BUCKET));
-        IngredientValue value = tagged
-                ? IngredientValue.fluidTag(fluid, amount)
-                : IngredientValue.fluid(fluid, amount);
-        if (selectedIsOutput && selectedOutput >= 0) {
-            if (tagged) {
-                status.set(Component.translatable("sce.status.fluid_tag_output"));
-                return;
+        if (current != null && !current.isEmpty() && !current.isRaw() && current.id() != null) {
+            boolean tagged = current.isFluidTag() || current.kind() == IngredientValue.Kind.TAG;
+            valueText = (tagged ? "#" : "") + current.id();
+            if (current.isFluid()) {
+                amountText = Integer.toString(current.amount());
             }
+        } else {
+            valueText = "";
+        }
+        valueBox.setValue(valueText);
+        syncAmountBox();
+    }
+
+    /**
+     * Shows the amount only where there is an amount to show. A number sitting beside an item slot,
+     * greyed out and unlabelled, reads as a field nobody can explain; an empty box with "mB" in it says
+     * what it is for and that this slot is not it.
+     */
+    private void syncAmountBox() {
+        if (amountBox == null) {
+            return;
+        }
+        boolean fluidSlot = selectedIsFluid();
+        amountBox.setValue(fluidSlot ? amountText : "");
+        amountBox.setEditable(fluidSlot);
+    }
+
+    /**
+     * Puts what the value row names into whichever recipe slot was picked last.
+     *
+     * <p>What gets written is decided by the slot, not guessed from the text. A fluid slot reads the id
+     * against the fluid registry and takes the amount beside it; every other slot reads it against the
+     * item registry. A leading {@code #} means a tag of whichever of the two the slot takes. An id that
+     * names nothing is refused here rather than written and rejected by the server later - which is what
+     * used to turn {@code minecraft:water} in a Filling step into an item ingredient and an invalid
+     * recipe.
+     */
+    private void applyValue() {
+        String typed = valueText.trim();
+        if (typed.isEmpty()) {
+            status.set(Component.translatable("sce.status.click_slot_first"));
+            return;
+        }
+        boolean tagged = typed.startsWith("#");
+        Identifier id = Identifier.tryParse(tagged ? typed.substring(1) : typed);
+        boolean output = selectedIsOutput && selectedOutput >= 0;
+        if (!output && selectedInput < 0) {
+            status.set(Component.translatable("sce.status.click_slot_first"));
+            return;
+        }
+        boolean fluidSlot = selectedIsFluid();
+        if (id == null) {
+            status.set(Component.translatable(fluidSlot ? "sce.status.invalid_fluid" : "sce.status.invalid_item"));
+            return;
+        }
+        // A result names one concrete thing; a tag is a set of them and there would be no way to say
+        // which one came out.
+        if (tagged && output) {
+            status.set(Component.translatable(fluidSlot ? "sce.status.fluid_tag_output" : "sce.status.tag_output"));
+            return;
+        }
+        if (!tagged && !(fluidSlot ? BuiltInRegistries.FLUID.containsKey(id) : BuiltInRegistries.ITEM.containsKey(id))) {
+            status.set(Component.translatable(fluidSlot ? "sce.status.invalid_fluid" : "sce.status.invalid_item"));
+            return;
+        }
+        IngredientValue value;
+        if (fluidSlot) {
+            int amount = Math.max(1, parseInt(amountText, IngredientValue.BUCKET));
+            value = tagged ? IngredientValue.fluidTag(id, amount) : IngredientValue.fluid(id, amount);
+        } else {
+            value = tagged ? IngredientValue.tag(id) : IngredientValue.item(id);
+        }
+        if (output) {
             if (!menu.outputItem(selectedOutput).isEmpty()) {
                 status.set(Component.translatable("sce.status.clear_slot_first"));
                 return;
             }
             overlayOut[selectedOutput] = value;
-            return;
-        }
-        if (selectedInput < 0) {
-            status.set(Component.translatable("sce.status.click_slot_first"));
             return;
         }
         if (!menu.gridItem(selectedInput).isEmpty()) {
@@ -613,9 +702,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private void clearSelected() {
         if (selectedIsOutput && selectedOutput >= 0) {
             overlayOut[selectedOutput] = IngredientValue.empty();
+            outputExtra[selectedOutput].clear();
         } else if (selectedInput >= 0) {
             overlay[selectedInput] = IngredientValue.empty();
         }
+        syncValueRow(IngredientValue.empty());
     }
 
 
@@ -707,13 +798,19 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (create) {
             draft.kind = RecipeDraft.Kind.CREATE_PROCESSING;
             draft.createType = RecipeModes.createType(mode);
-            draft.processingTime = pendingTime;
-            draft.heat = mixing() ? HEAT_NAMES[heatIndex] : "none";
+            // A duration or a heat a type cannot use is not merely ignored by Create: the recipe fails
+            // to load. So they are written only where the type has a field for them.
+            draft.processingTime = RecipeModes.allowsDuration(mode) ? pendingTime : 0;
+            draft.heat = heated() ? HEAT_NAMES[heatIndex] : "none";
+            draft.keepHeldItem = RecipeModes.hasKeepHeldItem(mode) && keepHeldItem;
             draft.results.clear();
             for (int i = 0; i < outputCount; i++) {
                 IngredientValue item = resolveOutput(i);
                 if (!item.isEmpty()) {
-                    draft.results.add(new RecipeDraft.ResultEntry(item, resolveOutputCount(i), outputChance[i]));
+                    RecipeDraft.ResultEntry entry =
+                            new RecipeDraft.ResultEntry(item, resolveOutputCount(i), outputChance[i]);
+                    entry.extra.putAll(outputExtra[i]);
+                    draft.results.add(entry);
                 }
             }
         } else {
@@ -864,20 +961,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     public void setGhostInput(int index, ItemStack stack) {
         // Place a real item into the slot so it behaves like a normal container (pick up, drag, …).
-        if (index >= 0 && index < inputCount && !stack.isEmpty()) {
+        // A fluid slot is not a container: it holds a quantity, so an item dropped there is refused
+        // rather than silently ignored once the recipe is saved.
+        if (index >= 0 && index < inputCount && !stack.isEmpty() && !RecipeModes.isFluidInput(mode, index)) {
             SceNetworking.sendSetSlot(index, stack.copy());
         }
     }
 
     public void setGhostOutput(int index, ItemStack stack) {
-        if (index >= 0 && index < outputCount && !stack.isEmpty()) {
+        if (index >= 0 && index < outputCount && !stack.isEmpty() && !RecipeModes.isFluidOutput(mode, index)) {
             SceNetworking.sendSetSlot(inputCount + index, stack.copy());
         }
     }
 
     /** Whether this recipe type takes fluids at all; only Create's do. */
+    /** Whether this type has anywhere to put a fluid at all, which is what a viewer asks before dragging. */
     public boolean acceptsFluids() {
-        return RecipeModes.isCreate(mode);
+        return RecipeModes.usesFluids(mode);
     }
 
     /**
@@ -886,7 +986,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
      */
     public boolean setGhostInputFluid(int index, Fluid fluid) {
         Identifier id = FluidSprites.idOf(fluid);
-        if (id == null || !acceptsFluids() || index < 0 || index >= inputCount) {
+        if (id == null || index < 0 || index >= inputCount || !RecipeModes.isFluidInput(mode, index)) {
             return false;
         }
         // The slot's own item would otherwise keep winning over the fluid drawn on top of it.
@@ -899,7 +999,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     public boolean setGhostOutputFluid(int index, Fluid fluid) {
         Identifier id = FluidSprites.idOf(fluid);
-        if (id == null || !acceptsFluids() || index < 0 || index >= outputCount) {
+        if (id == null || index < 0 || index >= outputCount || !RecipeModes.isFluidOutput(mode, index)) {
             return false;
         }
         if (!menu.outputItem(index).isEmpty()) {
@@ -918,7 +1018,21 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 imageWidth, imageHeight, imageWidth, imageHeight);
 
         for (Slot slot : menu.slots) {
-            drawSlot(graphics, leftPos + slot.x, topPos + slot.y);
+            drawSlot(graphics, leftPos + slot.x, topPos + slot.y, false);
+        }
+        // Over the top of the plain ones: a fluid slot takes no item at all, and saying so with the slot
+        // itself is what stops a Filling recipe being filled in as two items and rejected.
+        for (int i = 0; i < inputCount; i++) {
+            if (RecipeModes.isFluidInput(mode, i)) {
+                Slot slot = menu.inputSlot(i);
+                drawSlot(graphics, leftPos + slot.x, topPos + slot.y, true);
+            }
+        }
+        for (int i = 0; i < outputCount; i++) {
+            if (RecipeModes.isFluidOutput(mode, i)) {
+                Slot slot = menu.outputSlot(i);
+                drawSlot(graphics, leftPos + slot.x, topPos + slot.y, true);
+            }
         }
         for (int i = 0; i < inputCount; i++) {
             Slot slot = menu.inputSlot(i);
@@ -952,7 +1066,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             for (int i = 0; i < layout.seasoningCount; i++) {
                 int x = leftPos + layout.seasoningX + i * EditorLayout.SLOT;
                 int y = topPos + layout.seasoningY;
-                drawSlot(graphics, x, y);
+                drawSlot(graphics, x, y, false);
                 if (i < preview.size()) {
                     graphics.renderFakeItem(preview.get(i), x, y);
                     graphics.fill(x, y, x + 16, y + 16, 0x50303030);
@@ -987,8 +1101,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         graphics.blit(RenderPipelines.GUI_TEXTURED, TEMPLATE_TEXTURE, x, y, 0.0F, 0.0F, 16, 16, 16, 16);
     }
 
-    private void drawSlot(GuiGraphics graphics, int x, int y) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, SLOT_TEXTURE, x - 1, y - 1, 0.0F, 0.0F, 18, 18, 18, 18);
+    private void drawSlot(GuiGraphics graphics, int x, int y, boolean fluid) {
+        graphics.blit(RenderPipelines.GUI_TEXTURED, fluid ? FLUID_SLOT_TEXTURE : SLOT_TEXTURE,
+                x - 1, y - 1, 0.0F, 0.0F, 18, 18, 18, 18);
     }
 
     private void drawGhost(GuiGraphics graphics, IngredientValue value, int x, int y, int count) {
@@ -1005,7 +1120,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.renderItem(stack, x, y);
             graphics.renderItemDecorations(font, stack, x, y);
         }
-        if (value.kind() == IngredientValue.Kind.TAG) {
+        if (value.isRaw()) {
+            // Not a plain item: something this editor is carrying through whole. Marked so the author
+            // knows the slot holds more than the one item drawn in it.
+            graphics.drawString(font, "*", x + 1, y + 1, 0xFFFFD24A, false);
+        } else if (value.kind() == IngredientValue.Kind.TAG) {
             graphics.drawString(font, "#", x + 1, y + 1, 0xFF55FF55, false);
         } else if (value.isFluid()) {
             // A fluid is a quantity rather than an item, so mark the slot and show how much it is.
@@ -1026,6 +1145,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private static ItemStack stackFor(IngredientValue value) {
+        if (value.isRaw()) {
+            // Everything the ingredient admits, walked through the way a tag is, so the slot shows what
+            // a recipe viewer shows instead of the first entry and nothing else. A block tag's id is not
+            // an item id, which is why reading it as one left the slot empty.
+            ItemStack shown = TagCycle.rawItem(value.toIngredientJson());
+            return shown.isEmpty() ? new ItemStack(Items.BARRIER) : shown;
+        }
+        if (value.id() == null) {
+            return new ItemStack(Items.BARRIER);
+        }
         if (value.kind() == IngredientValue.Kind.TAG) {
             // The tag's own members, walked through one at a time. The name tag is only what is left when
             // the tag holds nothing to walk: it says "a tag" and nothing more, which is all there is.
@@ -1057,7 +1186,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
         if (create) {
             graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0xFF404040, false);
-            graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0xFF404040, false);
+            if (RecipeModes.allowsDuration(mode)) {
+                graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0xFF404040, false);
+            }
         }
         if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
             // The captions for the two rule buttons, in the line the layout keeps free above them.
@@ -1151,6 +1282,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         } else if (value.isFluid()) {
             graphics.setTooltipForNextFrame(font, Component.literal((value.isFluidTag() ? "#" : "") + value.id()
                     + " (" + value.amount() + " mB)").withStyle(ChatFormatting.AQUA), mouseX, mouseY);
+        } else if (value.isRaw()) {
+            // The option on show, how many there are, and - the part that matters - that leaving it
+            // alone is safe: saving writes the ingredient back exactly as it came.
+            List<Component> lines = new ArrayList<>();
+            ItemStack shown = stackFor(value);
+            if (!shown.isEmpty()) {
+                lines.addAll(getTooltipFromContainerItem(shown));
+            }
+            int options = TagCycle.rawOptions(value.toIngredientJson()).size();
+            if (options > 1) {
+                lines.add(Component.translatable("sce.tooltip.kept_options", options)
+                        .withStyle(ChatFormatting.GREEN));
+            }
+            lines.add(Component.translatable("sce.tooltip.kept_ingredient").withStyle(ChatFormatting.GOLD));
+            lines.add(Component.translatable("sce.tooltip.kept_ingredient_hint").withStyle(ChatFormatting.DARK_GRAY));
+            graphics.setTooltipForNextFrame(font, lines, Optional.empty(), mouseX, mouseY);
         } else {
             ItemStack stack = stackFor(value);
             graphics.setTooltipForNextFrame(font, getTooltipFromContainerItem(stack), stack.getTooltipImage(), mouseX, mouseY);
