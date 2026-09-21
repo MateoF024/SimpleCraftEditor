@@ -105,8 +105,12 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
                 .bounds(left + 256, ROW_ID, 54, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.load"))).build());
 
+        // The base a sequence starts from is an ingredient, so it can be a tag - Create's own precision
+        // mechanism starts from #c:plates/gold. Reading it as a plain id marked it red and would have
+        // turned it into one item the moment anybody retyped it.
         textBox(left, ROW_PARTS, 130, idOf(draft.input(0)),
-                s -> draft.setInput(0, itemOf(s)), "sce.hint.sequence_base", FieldAssist.id(), FieldAssist.Source.ITEMS);
+                s -> draft.setInput(0, itemOrTagOf(s)), "sce.hint.sequence_base",
+                FieldAssist.idOrTag(), FieldAssist.Source.ITEMS_OR_TAGS);
         textBox(left + 136, ROW_PARTS, 130, idOf(draft.transitionalItem),
                 s -> draft.transitionalItem = itemOf(s), "sce.hint.sequence_transitional", FieldAssist.id(), FieldAssist.Source.ITEMS);
         textBox(left + 272, ROW_PARTS, 38, Integer.toString(draft.loops),
@@ -309,6 +313,16 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         } catch (NumberFormatException e) {
             return fallback;
         }
+    }
+
+    /** An item id, or a tag when the text starts with {@code #}. */
+    private static IngredientValue itemOrTagOf(String raw) {
+        String typed = raw.trim();
+        if (!typed.startsWith("#")) {
+            return itemOf(typed);
+        }
+        ResourceLocation parsed = ResourceLocation.tryParse(typed.substring(1));
+        return parsed == null ? IngredientValue.empty() : IngredientValue.tag(parsed);
     }
 
     private static IngredientValue itemOf(String raw) {

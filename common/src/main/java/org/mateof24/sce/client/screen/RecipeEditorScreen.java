@@ -191,6 +191,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 }
             }
             mirrored = base.acceptMirrored;
+        } else if (base.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
+            // Create writes a recipe's ingredients in file order and tells an item from a fluid by the
+            // shape of the entry, not by where it sits. The editor keeps its tanks after its item slots,
+            // so they are dealt out by kind: otherwise mixing's water landed in an item slot, where it
+            // could not be edited, and the tanks sat empty beside it.
+            int itemSlot = 0;
+            int fluidSlot = RecipeModes.itemInputs(mode);
+            for (IngredientValue value : base.inputs) {
+                if (value == null || value.isEmpty()) {
+                    continue;
+                }
+                int target = value.isFluid() ? fluidSlot++ : itemSlot++;
+                if (target >= 0 && target < inputCount && target < overlay.length) {
+                    overlay[target] = value;
+                }
+            }
         } else {
             for (int i = 0; i < base.inputs.size() && i < overlay.length; i++) {
                 overlay[i] = base.input(i);
@@ -198,12 +214,20 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (base.kind == RecipeDraft.Kind.CREATE_PROCESSING) {
-            for (int i = 0; i < base.results.size() && i < outputCount; i++) {
-                RecipeDraft.ResultEntry entry = base.results.get(i);
-                overlayOut[i] = entry.item;
-                overlayOutCount[i] = entry.count;
-                outputChance[i] = entry.chance;
-                outputExtra[i].putAll(entry.extra);
+            int itemResult = 0;
+            int fluidResult = RecipeModes.itemOutputs(mode);
+            for (RecipeDraft.ResultEntry entry : base.results) {
+                if (entry.item == null || entry.item.isEmpty()) {
+                    continue;
+                }
+                int target = entry.item.isFluid() ? fluidResult++ : itemResult++;
+                if (target < 0 || target >= outputCount) {
+                    continue;
+                }
+                overlayOut[target] = entry.item;
+                overlayOutCount[target] = entry.count;
+                outputChance[target] = entry.chance;
+                outputExtra[target].putAll(entry.extra);
             }
             heatIndex = heatIndexOf(base.heat);
             keepHeldItem = base.keepHeldItem;
@@ -299,7 +323,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         // whichever of the two it is.
         int valueRowY = layout.tagRowY;
         boolean fluids = RecipeModes.usesFluids(mode);
-        int valueWidth = fluids ? 92 : 126;
+        int valueWidth = fluids ? 92 : 134;
         valueBox = new EditBox(font, leftPos + 8, topPos + valueRowY, valueWidth, 16,
                 Component.translatable("sce.hint.value"));
         valueBox.setMaxLength(200);
@@ -310,22 +334,30 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         fields.add(valueBox, FieldAssist.idOrTag(),
                 () -> selectedIsFluid() ? FieldAssist.Source.FLUIDS : FieldAssist.Source.ITEMS_OR_TAGS);
         if (fluids) {
-            amountBox = new EditBox(font, leftPos + 104, topPos + valueRowY, 30, 16,
+            // Wide enough for a bucket written out, which is what "1000" needs: at thirty pixels the
+            // number was cut off at the front and read as "000", a field with no name and no meaning.
+            amountBox = new EditBox(font, leftPos + 104, topPos + valueRowY, 38, 16,
                     Component.translatable("sce.hint.amount"));
-            amountBox.setValue(amountText);
-            amountBox.setResponder(s -> amountText = s);
-            // An amount is a fluid's whole quantity; an item ingredient has none and a result counts in
-            // its own field, so the box only accepts typing while a fluid slot is the one picked.
-            amountBox.setEditable(selectedIsFluid());
+            amountBox.setHint(Component.translatable("sce.hint.amount"));
+            // Blank is how the row says "the slot you picked has no amount", so it must not be mistaken
+            // for the author clearing the number.
+            amountBox.setResponder(s -> {
+                if (!s.isBlank()) {
+                    amountText = s;
+                }
+            });
+            amountBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    Component.translatable("sce.tooltip.amount")));
             addRenderableWidget(amountBox);
             fields.add(amountBox, FieldAssist.intAtLeast(1));
+            syncAmountBox();
         }
         addRenderableWidget(Button.builder(Component.translatable("sce.button.set_value"), b -> applyValue())
-                .bounds(leftPos + 138, topPos + valueRowY, 44, 16)
+                .bounds(leftPos + 146, topPos + valueRowY, 40, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(
                             Component.translatable(fluids ? "sce.tooltip.set_value_fluid" : "sce.tooltip.set_value"))).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
-                .bounds(leftPos + 186, topPos + valueRowY, 46, 16)
+                .bounds(leftPos + 190, topPos + valueRowY, 42, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.clear_slot"))).build());
 
         if (mechanical) {
@@ -366,6 +398,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     outputChance[selectedOutput] = Mth.clamp(parseFloat(s, outputChance[selectedOutput]), 0.0f, 1.0f);
                 }
             });
+            chanceBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    Component.translatable("sce.tooltip.chance")));
             addRenderableWidget(chanceBox);
             fields.add(chanceBox, FieldAssist.decimalBetween(0.0f, 1.0f));
             if (RecipeModes.allowsDuration(mode)) {
@@ -516,10 +550,21 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             valueText = "";
         }
         valueBox.setValue(valueText);
-        if (amountBox != null) {
-            amountBox.setValue(amountText);
-            amountBox.setEditable(fluidSlot);
+        syncAmountBox();
+    }
+
+    /**
+     * Shows the amount only where there is an amount to show. A number sitting beside an item slot,
+     * greyed out and unlabelled, reads as a field nobody can explain; an empty box with "mB" in it says
+     * what it is for and that this slot is not it.
+     */
+    private void syncAmountBox() {
+        if (amountBox == null) {
+            return;
         }
+        boolean fluidSlot = selectedIsFluid();
+        amountBox.setValue(fluidSlot ? amountText : "");
+        amountBox.setEditable(fluidSlot);
     }
 
     /**
@@ -1005,9 +1050,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private static ItemStack stackFor(IngredientValue value) {
+        if (value.isRaw()) {
+            // Everything the ingredient admits, walked through the way a tag is, so the slot shows what
+            // a recipe viewer shows instead of the first entry and nothing else. A block tag's id is not
+            // an item id, which is why reading it as one left the slot empty.
+            ItemStack shown = TagCycle.rawItem(value.toIngredientJson());
+            return shown.isEmpty() ? new ItemStack(Items.BARRIER) : shown;
+        }
         if (value.id() == null) {
-            // A carried-through ingredient with no item named anywhere inside it. There is nothing to
-            // draw, so the slot shows a barrier: something is there, and it is not an item.
             return new ItemStack(Items.BARRIER);
         }
         if (value.kind() == IngredientValue.Kind.TAG) {
@@ -1113,14 +1163,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.renderTooltip(font, Component.literal((value.isFluidTag() ? "#" : "") + value.id()
                     + " (" + value.amount() + " mB)").withStyle(ChatFormatting.AQUA), mouseX, mouseY);
         } else if (value.isRaw()) {
-            // Says what it is and, just as importantly, that it is safe to leave alone: saving writes it
-            // back exactly as it came. Typing something in the value row is what replaces it.
+            // The option on show, how many there are, and - the part that matters - that leaving it
+            // alone is safe: saving writes the ingredient back exactly as it came.
             List<Component> lines = new ArrayList<>();
-            if (value.id() != null) {
-                ItemStack shown = stackFor(value);
-                if (!shown.isEmpty()) {
-                    lines.addAll(getTooltipFromContainerItem(shown));
-                }
+            ItemStack shown = stackFor(value);
+            if (!shown.isEmpty()) {
+                lines.addAll(getTooltipFromContainerItem(shown));
+            }
+            int options = TagCycle.rawOptions(value.toIngredientJson()).size();
+            if (options > 1) {
+                lines.add(Component.translatable("sce.tooltip.kept_options", options)
+                        .withStyle(ChatFormatting.GREEN));
             }
             lines.add(Component.translatable("sce.tooltip.kept_ingredient").withStyle(ChatFormatting.GOLD));
             lines.add(Component.translatable("sce.tooltip.kept_ingredient_hint").withStyle(ChatFormatting.DARK_GRAY));
