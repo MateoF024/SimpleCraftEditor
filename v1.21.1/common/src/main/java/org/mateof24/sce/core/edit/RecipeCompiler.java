@@ -445,6 +445,10 @@ public final class RecipeCompiler {
             "experience", "cookingtime", "count",
             "acceptMirrored", "accept_mirrored",
             "processingTime", "processing_time", "heatRequirement", "heat_requirement",
+            // Create's deployer flag. Modelled rather than carried, because a carried one could not be
+            // turned off: restoreInto only puts back what the editor did not write, so the old value
+            // would come straight back the moment the author cleared the box.
+            "keepHeldItem", "keep_held_item",
             "transitionalItem", "transitional_item", "sequence", "loops",
             InheritingCraftingRecipe.DATA_KEY);
 

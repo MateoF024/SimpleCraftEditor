@@ -23,13 +23,25 @@ public final class RecipeModes {
     /**
      * One selectable type. Held as a table of rows rather than as parallel arrays: a row cannot fall out
      * of step with itself, which the six arrays this replaced could and did whenever a type was added.
+     *
+     * <p>The Create columns are not a design choice, they are Create's own limits.
+     * {@code ProcessingRecipe.validate()} counts the ingredients, the results, the fluid ingredients and
+     * the fluid results of a recipe and compares each against a maximum that its class declares; over the
+     * limit it returns an error, and an erroring recipe does not load at all. Offering a slot Create will
+     * reject produces the "invalid recipe" the editor used to show for a Filling recipe; offering fewer
+     * than it allows silently drops what does not fit when the author saves.
      */
     private record Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType,
-                        String labelKey, int inputs, int outputs) {
+                        String labelKey, int inputs, int outputs,
+                        int fluidInputs, int fluidOutputs, int inputColumns, int outputColumns,
+                        boolean duration, boolean heat) {
+        /** A row for one of the plain types, whose shape the layout works out for itself. */
+        Mode(RecipeDraft.Kind kind, RecipeDraft.Cooking cooking, String createType,
+             String labelKey, int inputs, int outputs) {
+            this(kind, cooking, createType, labelKey, inputs, outputs, 0, 0, 0, 0, false, false);
+        }
     }
 
-    private static final int CREATE_INPUTS = 6;
-    private static final int CREATE_OUTPUTS = 4;
     private static final int MECHANICAL_SLOTS = RecipeDraft.MECHANICAL_SIZE * RecipeDraft.MECHANICAL_SIZE;
 
     private static final Mode[] MODES = {
@@ -49,20 +61,29 @@ public final class RecipeModes {
             // whose only editable part is one of eleven fixed items is not worth an editor.
             new Mode(RecipeDraft.Kind.SMITHING_TRANSFORM, null, null, "sce.mode.smithing_transform", 3, 1),
 
-            // Create's processing machines. All share the ingredient/result layout.
-            create("create:mixing", "sce.mode.create_mixing"),
-            create("create:crushing", "sce.mode.create_crushing"),
-            create("create:milling", "sce.mode.create_milling"),
-            create("create:pressing", "sce.mode.create_pressing"),
-            create("create:compacting", "sce.mode.create_compacting"),
-            create("create:cutting", "sce.mode.create_cutting"),
-            create("create:splashing", "sce.mode.create_splashing"),
-            create("create:haunting", "sce.mode.create_haunting"),
-            create("create:sandpaper_polishing", "sce.mode.create_sandpaper"),
-            create("create:deploying", "sce.mode.create_deploying"),
-            create("create:filling", "sce.mode.create_filling"),
-            create("create:emptying", "sce.mode.create_emptying"),
-            create("create:item_application", "sce.mode.create_item_application"),
+            // Create's processing machines, each with the limits its own recipe class declares.
+            //
+            //     create(type, label, items in, fluids in, in columns,
+            //                         items out, fluids out, out columns, duration, heat)
+            //
+            // Mixing and compacting are BasinRecipe: its codec would take 64 ingredients, but the basin
+            // itself is built with nine slots and two tanks, so nine is what anyone can actually put in
+            // one — and nine is what Create's own ice recipe uses.
+            create("create:mixing", "sce.mode.create_mixing", 9, 2, 4, 4, 2, 3, true, true),
+            create("create:crushing", "sce.mode.create_crushing", 1, 0, 1, 7, 0, 4, true, false),
+            create("create:milling", "sce.mode.create_milling", 1, 0, 1, 4, 0, 2, true, false),
+            create("create:pressing", "sce.mode.create_pressing", 1, 0, 1, 2, 0, 2, false, false),
+            create("create:compacting", "sce.mode.create_compacting", 9, 2, 4, 4, 2, 3, true, true),
+            create("create:cutting", "sce.mode.create_cutting", 1, 0, 1, 4, 0, 2, true, false),
+            create("create:splashing", "sce.mode.create_splashing", 1, 0, 1, 12, 0, 4, false, false),
+            create("create:haunting", "sce.mode.create_haunting", 1, 0, 1, 12, 0, 4, false, false),
+            create("create:sandpaper_polishing", "sce.mode.create_sandpaper", 1, 0, 1, 1, 0, 1, false, false),
+            // The deployer and a player's own hand share ItemApplicationRecipe: the thing being worked on
+            // and the thing applied to it, and nothing else.
+            create("create:deploying", "sce.mode.create_deploying", 2, 0, 1, 4, 0, 2, false, false),
+            create("create:filling", "sce.mode.create_filling", 1, 1, 1, 1, 0, 1, false, false),
+            create("create:emptying", "sce.mode.create_emptying", 1, 0, 1, 1, 1, 1, false, false),
+            create("create:item_application", "sce.mode.create_item_application", 2, 0, 1, 4, 0, 2, false, false),
 
             new Mode(RecipeDraft.Kind.MECHANICAL_CRAFTING, null, "create:mechanical_crafting",
                     "sce.mode.create_mechanical_crafting", MECHANICAL_SLOTS, 1),
@@ -76,9 +97,75 @@ public final class RecipeModes {
     private RecipeModes() {
     }
 
-    private static Mode create(String createType, String labelKey) {
+    private static Mode create(String createType, String labelKey, int itemsIn, int fluidsIn, int inColumns,
+                               int itemsOut, int fluidsOut, int outColumns, boolean duration, boolean heat) {
         return new Mode(RecipeDraft.Kind.CREATE_PROCESSING, null, createType, labelKey,
-                CREATE_INPUTS, CREATE_OUTPUTS);
+                itemsIn + fluidsIn, itemsOut + fluidsOut, fluidsIn, fluidsOut, inColumns, outColumns,
+                duration, heat);
+    }
+
+    /**
+     * How many of a type's input slots take an item. The fluid slots follow them, so slot {@code i} is a
+     * fluid slot exactly when {@code i >= itemInputs(mode)} — which is what lets the menu refuse an item
+     * there and the screen draw it as a tank.
+     */
+    public static int itemInputs(int mode) {
+        Mode row = MODES[clamp(mode)];
+        return row.inputs() - row.fluidInputs();
+    }
+
+    /** The same split on the result side. */
+    public static int itemOutputs(int mode) {
+        Mode row = MODES[clamp(mode)];
+        return row.outputs() - row.fluidOutputs();
+    }
+
+    public static boolean isFluidInput(int mode, int index) {
+        return index >= itemInputs(mode) && index < inputCount(mode);
+    }
+
+    public static boolean isFluidOutput(int mode, int index) {
+        return index >= itemOutputs(mode) && index < outputCount(mode);
+    }
+
+    /** Whether the type takes fluids at all, which is what puts an amount field on the value row. */
+    public static boolean usesFluids(int mode) {
+        Mode row = MODES[clamp(mode)];
+        return row.fluidInputs() > 0 || row.fluidOutputs() > 0;
+    }
+
+    /**
+     * Whether a processing time means anything for this type. Create refuses a recipe that names one it
+     * cannot use — only crushing, milling, sawing, mixing and compacting can — so the field is not shown
+     * for the rest rather than shown and then rejected.
+     */
+    public static boolean allowsDuration(int mode) {
+        return MODES[clamp(mode)].duration();
+    }
+
+    /** Whether a heat requirement means anything: the basin types, and only those. */
+    public static boolean allowsHeat(int mode) {
+        return MODES[clamp(mode)].heat();
+    }
+
+    /**
+     * Whether the type has Create's "keep held item" flag — the deployer not consuming what it is
+     * holding, which is how every waxing and de-oxidising recipe in the game works. 165 of Create's own
+     * recipes set it.
+     */
+    public static boolean hasKeepHeldItem(int mode) {
+        String type = MODES[clamp(mode)].createType();
+        return "create:deploying".equals(type) || "create:item_application".equals(type);
+    }
+
+    /** Columns the input grid is laid out in; 0 for the types whose shape the layout decides itself. */
+    public static int inputColumns(int mode) {
+        return MODES[clamp(mode)].inputColumns();
+    }
+
+    /** Columns the result slots are laid out in; 0 means "let the layout decide". */
+    public static int outputColumns(int mode) {
+        return MODES[clamp(mode)].outputColumns();
     }
 
     public static RecipeDraft.Kind kind(int mode) {
@@ -179,6 +266,28 @@ public final class RecipeModes {
 
     public static int outputCount(int mode) {
         return MODES[clamp(mode)].outputs();
+    }
+
+    /**
+     * The most input slots any type asks for, so the menu's backing container is built once and fits
+     * them all. Read from the table rather than written down, because a type added with more slots than
+     * the container holds would drop the surplus silently.
+     */
+    public static int maxInputCount() {
+        int most = 0;
+        for (Mode row : MODES) {
+            most = Math.max(most, row.inputs());
+        }
+        return most;
+    }
+
+    /** The same for results — Bulk Washing and Bulk Haunting each allow twelve. */
+    public static int maxOutputCount() {
+        int most = 0;
+        for (Mode row : MODES) {
+            most = Math.max(most, row.outputs());
+        }
+        return most;
     }
 
     public static int clamp(int mode) {

@@ -28,11 +28,24 @@ public final class RecipeDraft {
      */
     public static final int MECHANICAL_SIZE = 5;
 
-    /** One item output of a Create processing recipe: an item, a count and a drop chance (0..1). */
+    /**
+     * One output of a Create processing recipe: an item (or a fluid), a count and a drop chance.
+     *
+     * <p>The chance is a probability between 0 and 1 for a processing recipe, and a <b>weight</b> for a
+     * recipe sequence, where Create draws one result out of the pool in proportion to it — the precision
+     * mechanism's pool runs 120, 8, 8, 5, 3, 2, 2, 1, 1. Clamping it to 1 there flattened the pool into
+     * nine equally likely outcomes, so it is not clamped here; the screen decides what range to offer.
+     */
     public static final class ResultEntry {
         public IngredientValue item;
         public int count;
         public float chance;
+        /**
+         * Keys of the result object this editor does not model — Create allows {@code components} on a
+         * result, so a named or enchanted output is a thing a recipe can ask for. Carried through
+         * untouched, the way {@link #extras} carries the ones at the top level.
+         */
+        public final Map<String, JsonElement> extra = new LinkedHashMap<>();
 
         public ResultEntry(IngredientValue item, int count, float chance) {
             this.item = item;
@@ -148,6 +161,12 @@ public final class RecipeDraft {
     public String createType = "";
     public int processingTime = 0;
     public String heat = "none";
+    /**
+     * Create's "keep held item": the deployer does not consume what it is holding. Every waxing and
+     * de-oxidising recipe in the game is a deploying recipe with this set, which is 165 of Create's own.
+     * Only deploying and manual item application have it.
+     */
+    public boolean keepHeldItem;
     public final List<ResultEntry> results = new ArrayList<>();
 
     public RecipeDraft() {
@@ -165,7 +184,7 @@ public final class RecipeDraft {
             case CRAFTING_SHAPED -> draft.width * draft.height;
             case CRAFTING_SHAPELESS -> 9;
             case COOKING, STONECUTTING -> 1;
-            case CREATE_PROCESSING -> 6;
+            case CREATE_PROCESSING -> RecipeModes.maxInputCount();
             case MECHANICAL_CRAFTING -> MECHANICAL_SIZE * MECHANICAL_SIZE;
             case SEQUENCED_ASSEMBLY -> 1; // the single base ingredient the sequence starts from
             // The smithing table's three: template, base and addition, always in that order.

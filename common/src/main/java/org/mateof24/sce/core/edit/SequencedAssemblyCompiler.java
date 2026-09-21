@@ -38,7 +38,11 @@ public final class SequencedAssemblyCompiler {
                 continue;
             }
             JsonObject result = itemStackJson(entry.item, entry.count);
-            if (entry.chance < 1.0f) {
+            // Create draws one of these out of the pool in proportion to its chance, so here the field
+            // is a weight and not a probability: the precision mechanism's pool runs 120, 8, 8, 5, 3, 2,
+            // 2, 1, 1. Writing it only when it was below one flattened every weighted pool into an even
+            // one the moment the recipe was opened and saved.
+            if (entry.chance != 1.0f) {
                 result.addProperty("chance", entry.chance);
             }
             results.add(result);
@@ -70,8 +74,11 @@ public final class SequencedAssemblyCompiler {
                     continue;
                 }
                 // Create replaces a step's first ingredient with the transitional item when the recipe
-                // loads, so the ingredient actually worth editing is the one after it.
-                IngredientValue applied = step.inputs.size() > 1 ? step.input(1) : step.input(0);
+                // loads, so the ingredient actually worth editing is the one after it — and when there is
+                // no one after it there is nothing being applied. Reading the transitional item as the
+                // applied one wrote it into the step twice on the way back out, which is one ingredient
+                // more than a pressing or a cutting step is allowed and made the recipe fail to load.
+                IngredientValue applied = step.inputs.size() > 1 ? step.input(1) : IngredientValue.empty();
                 step.inputs.clear();
                 step.inputs.add(applied);
                 draft.sequence.add(step);

@@ -50,6 +50,12 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     private String idValue;
     private final StatusLine status = new StatusLine();
     private int scroll;
+    /**
+     * Which entry of the result pool the result row is editing. A sequence does not yield one thing: it
+     * draws from a weighted pool, and the precision mechanism's runs to nine entries. Showing only the
+     * first of them was why the other eight could never be touched.
+     */
+    private int resultIndex;
 
     public SequencedAssemblyScreen(ResourceLocation id, String json) {
         super(Component.translatable("sce.sequence.title"));
@@ -106,11 +112,41 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         textBox(left + 272, ROW_PARTS, 38, Integer.toString(draft.loops),
                 s -> draft.loops = Math.max(1, parseInt(s, draft.loops)), "sce.hint.sequence_loops", FieldAssist.intAtLeast(1), FieldAssist.Source.NONE);
 
-        RecipeDraft.ResultEntry result = firstResult();
-        textBox(left, ROW_RESULT, 250, idOf(result.item),
+        resultIndex = Mth.clamp(resultIndex, 0, Math.max(0, draft.results.size() - 1));
+        RecipeDraft.ResultEntry result = currentResult();
+        textBox(left, ROW_RESULT, 150, idOf(result.item),
                 s -> result.item = itemOf(s), "sce.hint.sequence_result", FieldAssist.id(), FieldAssist.Source.ITEMS);
-        textBox(left + 256, ROW_RESULT, 54, Integer.toString(result.count),
+        textBox(left + 154, ROW_RESULT, 32, Integer.toString(result.count),
                 s -> result.count = Math.max(1, parseInt(s, result.count)), "sce.hint.amount", FieldAssist.intAtLeast(1), FieldAssist.Source.NONE);
+        // A weight, not a probability: Create picks one entry out of the pool in proportion to it, so
+        // values well above one are normal and the field has to take them.
+        textBox(left + 190, ROW_RESULT, 40, trimFloat(result.chance),
+                s -> result.chance = Math.max(0.0f, parseFloat(s, result.chance)),
+                "sce.hint.sequence_weight", FieldAssist.decimalBetween(0.0f, Float.MAX_VALUE), FieldAssist.Source.NONE);
+        addRenderableWidget(Button.builder(Component.literal("<"), b -> {
+            resultIndex = Math.max(0, resultIndex - 1);
+            rebuildWidgets();
+        }).bounds(left + 234, ROW_RESULT, 14, 16).build());
+        addRenderableWidget(Button.builder(Component.literal(">"), b -> {
+            resultIndex = Math.min(draft.results.size() - 1, resultIndex + 1);
+            rebuildWidgets();
+        }).bounds(left + 252, ROW_RESULT, 14, 16).build());
+        addRenderableWidget(Button.builder(Component.literal("+"), b -> {
+            draft.results.add(new RecipeDraft.ResultEntry(IngredientValue.empty(), 1, 1.0f));
+            resultIndex = draft.results.size() - 1;
+            rebuildWidgets();
+        }).bounds(left + 270, ROW_RESULT, 18, 16)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                        Component.translatable("sce.tooltip.add_result"))).build());
+        addRenderableWidget(Button.builder(Component.literal("x"), b -> {
+            if (draft.results.size() > 1) {
+                draft.results.remove(resultIndex);
+                resultIndex = Math.max(0, resultIndex - 1);
+                rebuildWidgets();
+            }
+        }).bounds(left + 292, ROW_RESULT, 18, 16)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                        Component.translatable("sce.tooltip.remove_result"))).build());
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.add_step"), b -> {
             draft.sequence.add(blankStep());
@@ -126,11 +162,29 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             RecipeDraft step = draft.sequence.get(index);
             int y = STEP_TOP + row * STEP_HEIGHT;
             addRenderableWidget(Button.builder(Component.literal(shortType(step.createType)), b -> {
-                step.createType = nextType(step.createType);
+                step.createType = nextType(step.createType, 1);
                 rebuildWidgets();
-            }).bounds(left + 20, y, 92, 20).build());
-            textBox(left + 116, y + 2, 150, idOf(step.input(0)),
-                    s -> step.setInput(0, itemOf(s)), "sce.hint.sequence_step_item", FieldAssist.id(), FieldAssist.Source.ITEMS);
+            }).bounds(left + 20, y, 92, 20)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                            Component.translatable("sce.tooltip.step_type"))).build());
+            // Filling is the spout: what it applies is a quantity of fluid, not an item. Typing an item
+            // id here used to be written as a second item ingredient, which is one more than a Filling
+            // recipe is allowed, so the recipe was refused with no hint as to why.
+            boolean fluidStep = isFillingStep(step);
+            int idWidth = fluidStep ? 116 : 150;
+            // The two boxes of a filling step share the amount, so it survives being typed in either
+            // order: setting the amount before there is a fluid to put it on used to lose it.
+            int[] amount = {stepAmount(step)};
+            textBox(left + 116, y + 2, idWidth, idOf(step.input(0)),
+                    s -> step.setInput(0, valueFor(step, s, amount[0])), "sce.hint.sequence_step_item",
+                    FieldAssist.idOrTag(),
+                    fluidStep ? FieldAssist.Source.FLUIDS : FieldAssist.Source.ITEMS_OR_TAGS);
+            if (fluidStep) {
+                textBox(left + 236, y + 2, 34, Integer.toString(amount[0]), s -> {
+                    amount[0] = Math.max(1, parseInt(s, amount[0]));
+                    step.setInput(0, withAmount(step.input(0), amount[0]));
+                }, "sce.hint.amount", FieldAssist.intAtLeast(1), FieldAssist.Source.NONE);
+            }
             addRenderableWidget(Button.builder(Component.literal("x"), b -> {
                 draft.sequence.remove(index);
                 rebuildWidgets();
@@ -167,11 +221,50 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         return box;
     }
 
-    private RecipeDraft.ResultEntry firstResult() {
+    private RecipeDraft.ResultEntry currentResult() {
         if (draft.results.isEmpty()) {
             draft.results.add(new RecipeDraft.ResultEntry(IngredientValue.empty(), 1, 1.0f));
         }
-        return draft.results.get(0);
+        return draft.results.get(Mth.clamp(resultIndex, 0, draft.results.size() - 1));
+    }
+
+    /** Whether a step is the spout, which applies a fluid rather than an item. */
+    private static boolean isFillingStep(RecipeDraft step) {
+        return "create:filling".equals(step.createType);
+    }
+
+    /** The amount on a filling step's fluid, or a bucket while it has none yet. */
+    private static int stepAmount(RecipeDraft step) {
+        IngredientValue value = step.input(0);
+        return value.isFluid() ? value.amount() : IngredientValue.BUCKET;
+    }
+
+    /** The same fluid with a different quantity; anything that is not a fluid is left alone. */
+    private static IngredientValue withAmount(IngredientValue value, int amount) {
+        if (!value.isFluid()) {
+            return value;
+        }
+        return value.isFluidTag()
+                ? IngredientValue.fluidTag(value.id(), Math.max(1, amount))
+                : IngredientValue.fluid(value.id(), Math.max(1, amount));
+    }
+
+    /**
+     * What the text in a step's field means, decided by the step's own type rather than by the text: a
+     * filling step names a fluid, every other step names an item, and a leading {@code #} is a tag of
+     * whichever of the two it is.
+     */
+    private IngredientValue valueFor(RecipeDraft step, String raw, int amount) {
+        String typed = raw.trim();
+        boolean tagged = typed.startsWith("#");
+        ResourceLocation parsed = ResourceLocation.tryParse(tagged ? typed.substring(1) : typed);
+        if (parsed == null) {
+            return IngredientValue.empty();
+        }
+        if (isFillingStep(step)) {
+            return tagged ? IngredientValue.fluidTag(parsed, amount) : IngredientValue.fluid(parsed, amount);
+        }
+        return tagged ? IngredientValue.tag(parsed) : IngredientValue.item(parsed);
     }
 
     private static RecipeDraft blankStep() {
@@ -180,10 +273,12 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         return step;
     }
 
-    private static String nextType(String current) {
+    /** The next step type, or the previous one for {@code by == -1}, wrapping either way round. */
+    private static String nextType(String current, int by) {
         for (int i = 0; i < STEP_TYPES.length; i++) {
             if (STEP_TYPES[i].equals(current)) {
-                return STEP_TYPES[(i + 1) % STEP_TYPES.length];
+                int next = (i + by % STEP_TYPES.length + STEP_TYPES.length) % STEP_TYPES.length;
+                return STEP_TYPES[next];
             }
         }
         return STEP_TYPES[0];
@@ -196,7 +291,24 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
     }
 
     private static String idOf(IngredientValue value) {
-        return value == null || value.isEmpty() ? "" : value.id().toString();
+        if (value == null || value.isEmpty() || value.id() == null) {
+            return "";
+        }
+        boolean tagged = value.isFluidTag() || value.kind() == IngredientValue.Kind.TAG;
+        return (tagged ? "#" : "") + value.id();
+    }
+
+    /** A weight without its trailing zero, so a pool of whole numbers reads as whole numbers. */
+    private static String trimFloat(float value) {
+        return value == Math.rint(value) ? Integer.toString((int) value) : Float.toString(value);
+    }
+
+    private static float parseFloat(String raw, float fallback) {
+        try {
+            return Float.parseFloat(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static IngredientValue itemOf(String raw) {
@@ -219,7 +331,7 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             return;
         }
         // Say what is missing instead of sending a recipe the server can only reject.
-        if (draft.input(0).isEmpty() || draft.transitionalItem.isEmpty() || firstResult().item.isEmpty()) {
+        if (draft.input(0).isEmpty() || draft.transitionalItem.isEmpty() || !hasAnyResult()) {
             status.set(Component.translatable("sce.status.sequence_incomplete"));
             return;
         }
@@ -231,6 +343,16 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         RecipeCompiler.restoreInto(draft, json);
         SceNetworking.sendSave(id, json.toString());
         status.set(Component.translatable("sce.status.saving", id.toString()));
+    }
+
+    /** Whether the pool has anything in it at all; an entry left blank is dropped when it is written. */
+    private boolean hasAnyResult() {
+        for (RecipeDraft.ResultEntry entry : draft.results) {
+            if (entry.item != null && !entry.item.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void disable() {
@@ -254,6 +376,21 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
             playClick();
             SceNetworking.sendOpenEditor(idValue, RecipeModes.previousAvailable(sequenceMode()));
             return true;
+        }
+        // Every other cycling button in this editor walks backwards on a right-click. These did not,
+        // which read as the one place where the rule did not hold rather than as a deliberate exception.
+        if (button == 1 && mouseX >= left + 20 && mouseX < left + 112) {
+            int visible = visibleSteps();
+            for (int row = 0; row < visible && scroll + row < draft.sequence.size(); row++) {
+                int y = STEP_TOP + row * STEP_HEIGHT;
+                if (mouseY >= y && mouseY < y + 20) {
+                    RecipeDraft step = draft.sequence.get(scroll + row);
+                    step.createType = nextType(step.createType, -1);
+                    playClick();
+                    rebuildWidgets();
+                    return true;
+                }
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -299,7 +436,10 @@ public class SequencedAssemblyScreen extends BaseSceScreen {
         label(graphics, "sce.sequence.label_transitional", left + 136, ROW_PARTS);
         label(graphics, "sce.sequence.label_loops", left + 272, ROW_PARTS);
         label(graphics, "sce.sequence.label_result", left, ROW_RESULT);
-        label(graphics, "sce.sequence.label_count", left + 256, ROW_RESULT);
+        label(graphics, "sce.sequence.label_count", left + 154, ROW_RESULT);
+        label(graphics, "sce.sequence.label_weight", left + 190, ROW_RESULT);
+        graphics.drawString(font, (resultIndex + 1) + "/" + Math.max(1, draft.results.size()),
+                left + 234, ROW_RESULT - 10, 0xD0D0D0, true);
         graphics.drawString(font, Component.translatable("sce.sequence.steps"), left, STEPS_HEADER, 0xFFFFFF);
 
         int visible = visibleSteps();
