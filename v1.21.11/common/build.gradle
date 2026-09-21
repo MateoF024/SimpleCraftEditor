@@ -12,6 +12,10 @@ dependencies {
     // Recipe-viewer APIs for the integration code that lives in common. Compile-time only; the same
     // mezz.jei.api / me.shedaniel.rei.api classes ship in both loader jars, so the Fabric jars are used
     // here. EMI has no build for this version, so its integration does not come along.
-    modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.21.11/fabric", include: 'jei-*.jar')
+    // JEI is the exception, and deliberately: its NeoForge jar names Minecraft types the way this
+    // module does, so it needs no remapping and goes in as a plain compileOnly. Taking the Fabric jar
+    // instead would mean modCompileOnly, and that is what makes Loom refuse to configure the project
+    // the day JEI ships built with a Loom newer than ours — which happened at JEI 19.57.0.444.
+    compileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.21.11/neoforge", include: 'jei-*.jar')
     modCompileOnly fileTree(dir: "${rootProject.projectDir}/libs/v1.21.11/fabric", include: 'RoughlyEnoughItems-*.jar')
 }

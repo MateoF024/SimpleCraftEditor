@@ -34,7 +34,9 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_v1211}"
     modImplementation "dev.architectury:architectury-fabric:${rootProject.architectury_api_v1211}"
 
-    modCompileOnly fileTree(dir: integrationLibs, include: 'jei-*.jar')
+    // No JEI here: nothing in this module names a mezz.jei class — the plugin lives in common and is
+    // declared in fabric.mod.json — and a modCompileOnly on JEI's Fabric jar is what makes Loom refuse
+    // to configure the build once JEI ships built with a newer Loom than ours.
     modCompileOnly fileTree(dir: integrationLibs, include: 'emi-*.jar')
     modCompileOnly fileTree(dir: integrationLibs, include: 'RoughlyEnoughItems-*.jar')
 
