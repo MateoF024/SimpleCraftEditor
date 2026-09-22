@@ -206,31 +206,73 @@ public final class TagCycle {
             }
             return;
         }
+        if (element.isJsonPrimitive()) {
+            // A bare id, or "#tag": how a set of items is spelled inside NeoForge's component
+            // ingredient, and how vanilla itself spells an ingredient from 1.21.11 on.
+            addNamed(element.getAsString(), out);
+            return;
+        }
         if (!element.isJsonObject()) {
             return;
         }
         JsonObject object = element.getAsJsonObject();
+        // "anything except this" - walking into it would show precisely the items it refuses.
+        String type = object.has("type") && object.get("type").isJsonPrimitive()
+                ? object.get("type").getAsString() : "";
+        if (type.endsWith(":not")) {
+            return;
+        }
         if (object.has("item") && object.get("item").isJsonPrimitive()) {
-            ResourceLocation id = ResourceLocation.tryParse(object.get("item").getAsString());
-            Item item = id == null ? null : BuiltInRegistries.ITEM.get(id);
-            if (item != null && item != Items.AIR) {
-                out.add(new ItemStack(item));
-            }
+            addItem(ResourceLocation.tryParse(object.get("item").getAsString()), out);
         } else if (object.has("tag") && object.get("tag").isJsonPrimitive()) {
-            ResourceLocation id = ResourceLocation.tryParse(object.get("tag").getAsString());
-            if (id != null) {
-                List<ItemStack> members = items(id);
-                if (members.isEmpty()) {
-                    members = blocks(id);
-                }
-                out.addAll(members);
+            addTag(ResourceLocation.tryParse(object.get("tag").getAsString()), out);
+        }
+        if (object.has("items")) {
+            // NeoForge's component ingredient names its set of items under this one, as a string, a
+            // "#tag" or a list of either - not as the objects every other shape uses.
+            collect(object.get("items"), out);
+        }
+        // And then everything nested, whatever it is called. There is no single spelling to look for:
+        // Create writes a compound ingredient's options under "ingredients" and Farmer's Delight writes
+        // the same NeoForge ingredient's options under "children"; Fabric's own wrapper uses
+        // "ingredients" again. Walking every nested array and object costs nothing - only the item and
+        // tag keys above ever add anything - and it means the next mod's spelling works too.
+        for (java.util.Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            JsonElement child = entry.getValue();
+            if ((child.isJsonArray() || child.isJsonObject()) && !entry.getKey().equals("items")) {
+                collect(child, out);
             }
         }
-        for (String nested : new String[]{"ingredients", "values"}) {
-            if (object.has(nested)) {
-                collect(object.get(nested), out);
-            }
+    }
+
+    /** One id, with a leading {@code #} meaning a tag of them. */
+    private static void addNamed(String raw, List<ItemStack> out) {
+        boolean tagged = raw.startsWith("#");
+        ResourceLocation id = ResourceLocation.tryParse(tagged ? raw.substring(1) : raw);
+        if (tagged) {
+            addTag(id, out);
+        } else {
+            addItem(id, out);
         }
+    }
+
+    private static void addItem(ResourceLocation id, List<ItemStack> out) {
+        Item item = id == null ? null : BuiltInRegistries.ITEM.get(id);
+        if (item != null && item != Items.AIR) {
+            out.add(new ItemStack(item));
+        }
+    }
+
+    /** A tag's members - as items, or as blocks when no item tag of that name exists. */
+    private static void addTag(ResourceLocation id, List<ItemStack> out) {
+        if (id == null) {
+            return;
+        }
+        List<ItemStack> members = items(id);
+        if (members.isEmpty()) {
+            members = blocks(id);
+        }
+        out.addAll(members);
     }
 
     /** The items of the blocks in a block tag, for the ingredient types that name one. */

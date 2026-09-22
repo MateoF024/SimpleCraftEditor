@@ -457,9 +457,9 @@ public final class SceNetworking {
         long started = ScePerf.now();
         try {
             Recipe<?> recipe = RecipeManager.fromJson(id, snapshot);
-            return recipe.getResultItem(server.registryAccess());
+            return RecipeStateManager.iconFor(snapshot, recipe.getResultItem(server.registryAccess()));
         } catch (Exception e) {
-            return ItemStack.EMPTY;
+            return RecipeStateManager.iconFor(snapshot, ItemStack.EMPTY);
         } finally {
             ScePerf.since("work out one disabled recipe's icon", started);
         }

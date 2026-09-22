@@ -20,7 +20,19 @@ public final class RecipeDraft {
         /** The smithing table's upgrade: diamond gear into netherite, and whatever a pack adds. */
         SMITHING_TRANSFORM,
         /** Cobblemon's campfire pot: the two crafting shapes again, with the pot's own fields around them. */
-        COOKING_POT, COOKING_POT_SHAPELESS
+        COOKING_POT, COOKING_POT_SHAPELESS,
+        /** Farmer's Delight's cutting board: one item, the tool that cuts it, and up to four results. */
+        CUTTING_BOARD,
+        /** Farmer's Delight's cooking pot: up to six ingredients, a meal and the bowl it is served in. */
+        FD_COOKING,
+        /** Twilight Forest's uncrafting table: a shaped recipe read backwards, at a cost in levels. */
+        UNCRAFTING,
+        /** Twilight Forest's drying rack: one item becomes another after a while on the rack. */
+        DRYING,
+        /** Twilight Forest's scepter repair: what recharges a scepter and by how much. */
+        SCEPTER_REPAIR,
+        /** Cobblemon's brewing stand: a bottle and what brews into it. */
+        BREWING_STAND
     }
 
     /**
@@ -200,6 +212,59 @@ public final class RecipeDraft {
     public boolean keepHeldItem;
     public final List<ResultEntry> results = new ArrayList<>();
 
+    /**
+     * Numbers another mod's recipe type asks for, keyed by the name they are written under: an uncrafting
+     * table's {@code cost}, a drying rack's {@code filter_time}, a scepter's {@code durability}.
+     *
+     * <p>A map rather than a field each, because the screen builds the boxes that fill it from
+     * {@link RecipeModes#numbers(int)} - the table is the only place a type's fields are written down, and
+     * a field here would be a second one for them to fall out of step with.
+     */
+    public final Map<String, Integer> numbers = new LinkedHashMap<>();
+
+    /** The same for the ones that are a choice out of a fixed list rather than a number. */
+    public final Map<String, String> choices = new LinkedHashMap<>();
+
+    /**
+     * Farmer's Delight's cooking pot: the bowl or bottle the meal is served in, handed back with it.
+     * Empty for a meal that needs none, which is most of them.
+     */
+    public IngredientValue container = IngredientValue.empty();
+
+    /** How many of {@link #container} - always one in practice, but the field is an item stack. */
+    public int containerCount = 1;
+
+    /**
+     * The result side when a type writes a grid there: Twilight Forest's uncrafting table, which is a
+     * shaped recipe read backwards and so has its pattern and key where a result normally goes.
+     * Row-major over {@link #width} by {@link #height}, like {@link #inputs} for a shaped recipe.
+     */
+    public final List<IngredientValue> outputGrid = new ArrayList<>();
+
+    /** Reads {@link #outputGrid} the way {@link #input(int)} reads the inputs. */
+    public IngredientValue outputCell(int index) {
+        return index >= 0 && index < outputGrid.size() ? outputGrid.get(index) : IngredientValue.empty();
+    }
+
+    public void setOutputCell(int index, IngredientValue value) {
+        while (outputGrid.size() <= index) {
+            outputGrid.add(IngredientValue.empty());
+        }
+        outputGrid.set(index, value);
+    }
+
+    /** A number this recipe carries, or the fallback the type declares when it carries none. */
+    public int number(RecipeModes.Number field) {
+        Integer value = numbers.get(field.key());
+        return value != null ? value : field.fallback();
+    }
+
+    /** A choice this recipe carries, or the type's own fallback. */
+    public String choice(RecipeModes.Choice field) {
+        String value = choices.get(field.key());
+        return value != null && field.options().contains(value) ? value : field.fallback();
+    }
+
     public RecipeDraft() {
     }
 
@@ -210,6 +275,13 @@ public final class RecipeDraft {
         if (kind == Kind.MECHANICAL_CRAFTING) {
             draft.width = MECHANICAL_SIZE;
             draft.height = MECHANICAL_SIZE;
+        }
+        if (kind == Kind.UNCRAFTING) {
+            // Width and height describe the grid this type has, and the uncrafting table has one on the
+            // result side rather than on the ingredient side.
+            for (int i = 0; i < draft.width * draft.height; i++) {
+                draft.outputGrid.add(IngredientValue.empty());
+            }
         }
         int slots = switch (kind) {
             case CRAFTING_SHAPED -> draft.width * draft.height;
@@ -223,6 +295,14 @@ public final class RecipeDraft {
             // The pot is the two crafting shapes over again, so it needs the same slots they do.
             case COOKING_POT -> draft.width * draft.height;
             case COOKING_POT_SHAPELESS -> 9;
+            // The other mods' benches: the shape is the mode table's, so it is read from there rather
+            // than written down twice. RecipeModes.inputCount is the number of slots the menu builds.
+            case CUTTING_BOARD -> 2;   // what is cut, and the tool that cuts it
+            case FD_COOKING -> 6;      // the cooking pot has six ingredient slots
+            case UNCRAFTING -> 1;      // one item in; the grid it becomes is on the result side
+            case DRYING -> 1;
+            case SCEPTER_REPAIR -> 4;  // the ingredients that recharge it; the scepter is the result
+            case BREWING_STAND -> 2;   // the bottle and what brews into it
         };
         for (int i = 0; i < slots; i++) {
             draft.inputs.add(IngredientValue.empty());

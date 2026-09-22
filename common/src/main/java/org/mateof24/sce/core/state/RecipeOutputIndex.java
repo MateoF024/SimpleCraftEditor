@@ -189,7 +189,10 @@ public final class RecipeOutputIndex {
      * nothing away: whatever it does in code, a datapack recipe still has to write its outputs down.
      */
     private Set<Item> outputsFromJson(ResourceLocation id) {
-        JsonObject json = RecipeStateManager.INSTANCE.rawJson(id);
+        // What the recipe says now, not what the pack shipped: a recipe written in this editor has no
+        // datapack file at all, and asking for one is why a freshly saved uncrafting recipe could not
+        // be found by the key that had just been used to open the item it takes apart.
+        JsonObject json = RecipeStateManager.INSTANCE.currentJson(id);
         if (json == null) {
             return Set.of();
         }
@@ -203,7 +206,43 @@ public final class RecipeOutputIndex {
         if (json.has("result")) {
             addItem(items, json.get("result"));
         }
+        // And the one item a recipe is about, for the types that name no result at all and would
+        // otherwise be found by nothing: an uncrafting recipe has a pattern and a key where every
+        // other recipe has a result, and a scepter repair hands back the very item it was given.
+        // Which field that is belongs to whoever wrote the compiler for the type, so it is asked
+        // rather than guessed - one item, the way a crafting recipe is offered under one item.
+        if (!json.has("result") && !json.has("results")) {
+            addSubjectItems(items, org.mateof24.sce.core.edit.ModRecipeCompiler.subjectOf(json));
+        }
         return items;
+    }
+
+    /**
+     * The concrete items an ingredient names, for the recipes indexed by the item they are about.
+     *
+     * <p>Only concrete ones: a tag is not one item, and putting all of its members in the table would
+     * offer the recipe under a hundred items that have nothing to do with it. A recipe whose subject is
+     * a tag is still reachable by typing its id into the editor and pressing Load.
+     */
+    private void addSubjectItems(Set<Item> into, JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement option : element.getAsJsonArray()) {
+                addSubjectItems(into, option);
+            }
+            return;
+        }
+        if (element.isJsonPrimitive()) {
+            if (element.getAsJsonPrimitive().isString()) {
+                addItem(into, element);
+            }
+            return;
+        }
+        if (element.isJsonObject() && element.getAsJsonObject().has("item")) {
+            addItem(into, element);
+        }
     }
 
     /** Reads one result entry, which may be a bare id, or an object keyed by {@code item} or {@code id}. */

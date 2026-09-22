@@ -352,6 +352,17 @@ public final class RecipeStateManager {
     }
 
     /**
+     * What a recipe's file says right now: the version the author wrote if there is one, otherwise the
+     * pack's own. The same answer {@link #editorJson} gives, without the log line - this one is asked
+     * once per recipe while the output index is built, and a pack with twenty-five thousand recipes
+     * would write twenty-five thousand lines.
+     */
+    public JsonObject currentJson(ResourceLocation id) {
+        JsonObject generated = state().generated().get(id);
+        return generated != null ? generated : rawJson(id);
+    }
+
+    /**
      * The JSON the editor should open, or null when the recipe has no source we can edit faithfully.
      *
      * <p>A recipe only has a source we can work from if it was written as a file: the pack's own datapack,
@@ -434,10 +445,53 @@ public final class RecipeStateManager {
             return ItemStack.EMPTY;
         }
         try {
-            return deserialize(id, json).value().getResultItem(server.registryAccess());
+            return iconFor(json, deserialize(id, json).value().getResultItem(server.registryAccess()));
         } catch (Exception e) {
+            return iconFor(json, ItemStack.EMPTY);
+        }
+    }
+
+    /**
+     * The picture to put beside a recipe in a list.
+     *
+     * <p>Its result, when the recipe declares one. When it does not, the item the recipe is about: the
+     * uncrafting table produces a whole grid and a scepter repair hands back the very item it was
+     * given, so neither has a result for {@code getResultItem} to return, and both left a blank space
+     * where every other row has a picture. It is the same item the editor key finds them under, which
+     * is the point - the row and the search agree on what the recipe is about.
+     */
+    public static ItemStack iconFor(JsonObject json, ItemStack declared) {
+        if (!declared.isEmpty() || json == null) {
+            return declared;
+        }
+        return firstItem(org.mateof24.sce.core.edit.ModRecipeCompiler.subjectOf(json));
+    }
+
+    /** The first concrete item an ingredient names; empty when it names only a tag, or nothing. */
+    private static ItemStack firstItem(JsonElement element) {
+        if (element == null || element.isJsonNull()) {
             return ItemStack.EMPTY;
         }
+        if (element.isJsonArray()) {
+            for (JsonElement option : element.getAsJsonArray()) {
+                ItemStack found = firstItem(option);
+                if (!found.isEmpty()) {
+                    return found;
+                }
+            }
+            return ItemStack.EMPTY;
+        }
+        String raw = null;
+        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+            raw = element.getAsString();
+        } else if (element.isJsonObject() && element.getAsJsonObject().has("item")
+                && element.getAsJsonObject().get("item").isJsonPrimitive()) {
+            raw = element.getAsJsonObject().get("item").getAsString();
+        }
+        ResourceLocation id = raw == null ? null : ResourceLocation.tryParse(raw);
+        return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
+                ? new ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id))
+                : ItemStack.EMPTY;
     }
 
     /** True if a datapack recipe with this id existed before our edits (a generated recipe is then an edit). */

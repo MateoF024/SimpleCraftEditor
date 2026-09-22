@@ -63,6 +63,20 @@ public final class FieldAssist {
 
     private static final int INVALID_TEXT = 0xFF5555;
     private static final int VALID_TEXT = 0xE0E0E0;
+    /** The grey the game itself uses for text that is there but not yours. */
+    private static final int PLACEHOLDER_TEXT = 0x707070;
+
+    /**
+     * A field's placeholder, in that grey.
+     *
+     * <p>White reads as something somebody typed. The whole point of a placeholder is that nobody did,
+     * and on a black field the only thing that can say so is the colour.
+     */
+    public static net.minecraft.network.chat.Component hint(String key) {
+        return net.minecraft.network.chat.Component.translatable(key)
+                .withStyle(net.minecraft.network.chat.Style.EMPTY
+                        .withColor(net.minecraft.network.chat.TextColor.fromRgb(PLACEHOLDER_TEXT)));
+    }
 
     /**
      * One field being watched. The source is a supplier rather than a value because the editor's value
@@ -76,8 +90,30 @@ public final class FieldAssist {
     private final List<String> matches = new ArrayList<>();
     private EditBox target;
     private int selected;
+    /**
+     * Where the completion list may be drawn. A field narrow enough to sit near the right edge of a
+     * panel would otherwise push its list off the side of that panel, which reads as a rendering fault
+     * rather than as a list. Untouched means unbounded, which is right for a full-screen editor.
+     */
+    private int leftLimit = Integer.MIN_VALUE;
+    private int rightLimit = Integer.MAX_VALUE;
     /** First row drawn, so a long list scrolls with the selection instead of being cut off. */
     private int offset;
+
+    /**
+     * Left edge of the completion list: under the field it belongs to, pulled back when that would push
+     * it outside the bounds the screen set. Asked by everything that needs it, so the list is drawn
+     * where the pointer is tested against it.
+     */
+    private int popupLeft() {
+        return Math.max(leftLimit, Math.min(target.getX() - 1, rightLimit - width()));
+    }
+
+    /** Keeps the completion list inside these bounds. Set it after {@link #clear()}, which forgets them. */
+    public void limits(int left, int right) {
+        leftLimit = left;
+        rightLimit = right;
+    }
 
     /** Forgets every field; call when a screen rebuilds its widgets. */
     public void clear() {
@@ -115,6 +151,18 @@ public final class FieldAssist {
         return text -> {
             try {
                 return Integer.parseInt(text.trim()) >= min;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        };
+    }
+
+    /** A whole number inside the range the field's own recipe type accepts. */
+    public static Predicate<String> intBetween(int min, int max) {
+        return text -> {
+            try {
+                int value = Integer.parseInt(text.trim());
+                return value >= min && value <= max;
             } catch (NumberFormatException e) {
                 return false;
             }
@@ -182,7 +230,7 @@ public final class FieldAssist {
             return;
         }
         int row = (int) ((mouseY - popupTop()) / LINE_HEIGHT);
-        int x = target.getX() - 1;
+        int x = popupLeft();
         if (row >= 0 && row < shownCount() && mouseX >= x && mouseX <= x + width()) {
             selected = offset + row;
             clampOffset();
@@ -369,7 +417,7 @@ public final class FieldAssist {
         int row = (int) ((mouseY - popupTop()) / LINE_HEIGHT);
         int index = offset + row;
         if (row < 0 || row >= shownCount() || index >= matches.size()
-                || mouseX < target.getX() - 1 || mouseX > target.getX() - 1 + width()) {
+                || mouseX < popupLeft() || mouseX > popupLeft() + width()) {
             return false;
         }
         selected = index;
@@ -384,7 +432,7 @@ public final class FieldAssist {
         if (isEmpty()) {
             return;
         }
-        int x = target.getX() - 1;
+        int x = popupLeft();
         int top = popupTop();
         int w = width();
         int rows = shownCount();

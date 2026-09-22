@@ -32,6 +32,7 @@ public final class RecipeCompiler {
             case CREATE_PROCESSING -> CreateRecipeCompiler.toJson(draft);
             case MECHANICAL_CRAFTING -> mechanicalCrafting(draft);
             case SEQUENCED_ASSEMBLY -> SequencedAssemblyCompiler.toJson(draft);
+            case CUTTING_BOARD, FD_COOKING, UNCRAFTING -> ModRecipeCompiler.toJson(draft);
         };
         restoreInto(draft, json);
         applyDataRules(draft, json);
@@ -344,14 +345,22 @@ public final class RecipeCompiler {
     public static void preserveFrom(RecipeDraft draft, JsonObject json) {
         String type = json.has("type") ? json.get("type").getAsString() : "";
         // A type this editor writes for itself is not remembered: it follows the settings on
-        // screen, and holding on to it would override turning inheritance back off.
+        // screen, and holding on to it would override turning inheritance back off. Another mod's
+        // workbench is the editor's own in the same sense - a mode writes that type - so it is not
+        // remembered either.
         draft.sourceType = InheritingCraftingRecipe.SHAPED_TYPE.equals(type)
-                || InheritingCraftingRecipe.SHAPELESS_TYPE.equals(type) ? "" : type;
+                || InheritingCraftingRecipe.SHAPELESS_TYPE.equals(type)
+                || ModRecipeCompiler.owns(type) ? "" : type;
         boolean smithing = "minecraft:smithing_transform".equals(type);
+        // The fields another mod's workbench has that this editor writes for itself. Per type, because
+        // words as ordinary as "input" and "cost" belong to plenty of other recipe types, and carrying
+        // those through untouched is exactly what the set below is for.
+        java.util.Set<String> modded = ModRecipeCompiler.modelledKeys(type);
         draft.extras.clear();
         for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
             String key = entry.getKey();
-            if (MODELLED_KEYS.contains(key) || (smithing && SMITHING_KEYS.contains(key))) {
+            if (MODELLED_KEYS.contains(key) || (smithing && SMITHING_KEYS.contains(key))
+                    || modded.contains(key)) {
                 continue;
             }
             draft.extras.put(key, entry.getValue().deepCopy());
@@ -387,9 +396,18 @@ public final class RecipeCompiler {
             case "minecraft:smithing_transform" -> fromSmithing(json);
             case "create:mechanical_crafting" -> fromMechanicalCrafting(json);
             case SequencedAssemblyCompiler.TYPE -> SequencedAssemblyCompiler.fromJson(id, json);
-            default -> type.startsWith("create:")
-                    ? CreateRecipeCompiler.fromJson(id, json)
-                    : fromForeignType(json);
+            default -> {
+                // Another mod's workbench, which has fields of its own that no shape can be guessed
+                // from. Null here means the recipe does not fit the editor - too many results, too big
+                // a pattern - and it must stay null: reading it as the plain shapeless recipe it
+                // resembles would drop every one of those fields on the next save.
+                if (ModRecipeCompiler.owns(type)) {
+                    yield ModRecipeCompiler.fromJson(id, json);
+                }
+                yield type.startsWith("create:")
+                        ? CreateRecipeCompiler.fromJson(id, json)
+                        : fromForeignType(json);
+            }
         };
         if (draft != null) {
             draft.id = id;

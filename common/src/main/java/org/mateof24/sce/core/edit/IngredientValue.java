@@ -234,16 +234,31 @@ public final class IngredientValue {
             return null;
         }
         JsonObject object = element.getAsJsonObject();
-        for (String key : new String[]{"item", "tag"}) {
+        // "anything except this": the one wrapper whose contents are the wrong answer.
+        if (object.has("type") && object.get("type").isJsonPrimitive()
+                && object.get("type").getAsString().endsWith(":not")) {
+            return null;
+        }
+        for (String key : new String[]{"item", "tag", "items"}) {
             if (object.has(key) && object.get(key).isJsonPrimitive()) {
-                ResourceLocation id = ResourceLocation.tryParse(object.get(key).getAsString());
+                String raw = object.get(key).getAsString();
+                ResourceLocation id = ResourceLocation.tryParse(raw.startsWith("#") ? raw.substring(1) : raw);
                 if (id != null) {
                     return id;
                 }
             }
         }
-        if (object.has("ingredients")) {
-            return previewOf(object.get("ingredients"));
+        // Nested options, under whatever name the mod chose for them: Create writes a compound
+        // ingredient's options under "ingredients", Farmer's Delight writes the same NeoForge
+        // ingredient's under "children", and NeoForge's component ingredient uses "items".
+        for (java.util.Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            JsonElement child = entry.getValue();
+            if (child.isJsonArray() || child.isJsonObject()) {
+                ResourceLocation found = previewOf(child);
+                if (found != null) {
+                    return found;
+                }
+            }
         }
         return null;
     }

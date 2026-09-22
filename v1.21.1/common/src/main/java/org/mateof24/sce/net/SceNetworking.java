@@ -507,9 +507,9 @@ public final class SceNetworking {
             RegistryAccess access = server.registryAccess();
             Recipe<?> recipe = Recipe.CODEC.parse(access.createSerializationContext(JsonOps.INSTANCE), snapshot)
                     .getOrThrow(com.google.gson.JsonParseException::new);
-            return recipe.getResultItem(access);
+            return RecipeStateManager.iconFor(snapshot, recipe.getResultItem(access));
         } catch (Exception e) {
-            return ItemStack.EMPTY;
+            return RecipeStateManager.iconFor(snapshot, ItemStack.EMPTY);
         } finally {
             ScePerf.since("work out one disabled recipe's icon", started);
         }
