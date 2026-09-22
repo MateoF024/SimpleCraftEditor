@@ -272,6 +272,43 @@ public final class RecipeModes {
         return isCookingPot(mode) ? CookingPot.SEASONING_SLOTS : 0;
     }
 
+    /** Whether the type keeps an experience and time column down the right-hand side. */
+    public static boolean hasSideColumn(int mode) {
+        return isCooking(mode);
+    }
+
+    /**
+     * Whether a type has a row of its own between the recipe and the value row. Create's types do -
+     * chance, duration, heat - and nothing else here has one yet.
+     */
+    public static boolean hasExtraRow(int mode) {
+        return isCreate(mode);
+    }
+
+    /** Whether each result carries a drop chance. Create's processing types do. */
+    public static boolean hasChance(int mode) {
+        return isCreate(mode);
+    }
+
+    /** How many text fields that row holds: the drop chance, and the duration where Create allows one. */
+    public static int extraFieldCount(int mode) {
+        return (hasChance(mode) ? 1 : 0) + (allowsDuration(mode) ? 1 : 0);
+    }
+
+    /** How many buttons it holds: Create's heat requirement and its held-item flag. */
+    public static int extraButtonCount(int mode) {
+        return (allowsHeat(mode) ? 1 : 0) + (hasKeepHeldItem(mode) ? 1 : 0);
+    }
+
+    /**
+     * Whether that row is one field and nothing else, in which case its caption goes centred above it
+     * rather than beside it: a lone field with its name to the left sits in the corner of an otherwise
+     * empty row, which reads as something unfinished.
+     */
+    public static boolean extraRowCaptioned(int mode) {
+        return extraFieldCount(mode) == 1 && extraButtonCount(mode) == 0;
+    }
+
     /** Whether a mode is drawn on a three-wide grid rather than a single ingredient slot. */
     public static boolean usesGrid(int mode) {
         return isCrafting(mode) || isCreate(mode) || isCookingPot(mode) || isSmithing(mode);

@@ -46,15 +46,18 @@ public final class EditorLayout {
     /** Free band between the id row and the player inventory, which every type divides up. */
     private static final int BAND_TOP = ID_ROW_Y + ROW;
     private static final int BAND_BOTTOM = 152;
-    /** Gap between rows: wide enough to read as separate, tight enough that Create's four rows fit. */
-    private static final int MIN_ROW_GAP = 6;
-    private static final int MAX_ROW_GAP = 16;
     /** Space between the grid, the arrow and the result slots. */
     private static final int CLUSTER_GAP = 12;
 
-    /** Width the cooking types reserve on the right for the xp and time fields, labels included. */
-    private static final int COOKING_RESERVE = 68;
+    /**
+     * Width a type with a side column takes for its xp and time fields, captions included. The captions
+     * are drawn right-aligned against the fields, so the difference between the two is what they have
+     * to fit in - enough for "Tiempo:" at the longest.
+     */
+    private static final int SIDE_RESERVE = 76;
     public static final int SIDE_FIELD_WIDTH = 42;
+    /** What is left of that for the caption beside each field. */
+    public static final int SIDE_LABEL_WIDTH = SIDE_RESERVE - SIDE_FIELD_WIDTH;
 
     public final int gridX;
     public final int gridY;
@@ -80,8 +83,19 @@ public final class EditorLayout {
      * {@link #LABEL_LINE} directly above, which this row reserves.
      */
     public final int ruleRowY;
-    /** Create's chance/time/heat row, or -1 for types without one. */
+    /**
+     * The row a type keeps for its own fields - Create's chance, time and heat - or -1 for the types
+     * that need none.
+     */
     public final int extraRowY;
+    /**
+     * Where that row's caption goes, or -1 when it has none.
+     *
+     * <p>A row holding one field and nothing else reads better with its name centred over it than with
+     * the name beside it and half the panel empty to the right. A row holding several keeps its captions
+     * beside the fields, because a column of captions over a row of boxes is harder to pair up.
+     */
+    public final int extraCaptionY;
 
     /** Left edge of the cooking xp/time column, or -1 when the type has no side column. */
     public final int sideX;
@@ -106,8 +120,8 @@ public final class EditorLayout {
 
     public EditorLayout(int mode) {
         boolean ruleRow = RecipeModes.hasRuleRow(mode);
-        boolean cooking = RecipeModes.isCooking(mode);
-        boolean create = RecipeModes.isCreate(mode);
+        boolean sideColumn = RecipeModes.hasSideColumn(mode);
+        boolean extraRow = RecipeModes.hasExtraRow(mode);
         boolean mechanical = RecipeModes.isMechanicalCrafting(mode);
 
         int inputs = RecipeModes.inputCount(mode);
@@ -124,56 +138,66 @@ public final class EditorLayout {
         outputColumns = outputColumnsFromType > 0 ? outputColumnsFromType : 1;
         int outputRows = ceilDiv(outputs, outputColumns);
 
-        // ---- vertical: hang the rows from the bottom of the band, then centre the recipe above them
+        // ---- vertical: one column of blocks, with the free space split evenly between them
+        //
+        // The blocks are the recipe, a type's own field row, its rule row and the value row, in that
+        // order; a caption belongs to the block under it and is part of its height. Every gap is the
+        // same size - including the one above the first block and the one under the last - which is the
+        // whole point: the space over the grid used to be smaller than the space under the last row,
+        // because that gap was capped and the recipe quietly absorbed the rest.
         int recipeHeight = Math.max(gridRows, outputRows) * SLOT;
-        // Rows between the recipe and the value row: Create's amount row, or a type's own rule row,
-        // which is taller than a plain one because it carries a caption.
-        int middleRows = (create ? 1 : 0) + (ruleRow ? 1 : 0);
-        int middleHeight = (create ? ROW : 0) + (ruleRow ? ROW + LABEL_LINE : 0);
-        int stacked = recipeHeight + middleHeight + ROW;
-        int band = BAND_BOTTOM - BAND_TOP;
-        int gap = clamp((band - stacked) / (middleRows + 1), MIN_ROW_GAP, MAX_ROW_GAP);
+        boolean extraCaption = extraRow && RecipeModes.extraRowCaptioned(mode);
+        int extraHeight = extraRow ? ROW + (extraCaption ? LABEL_LINE : 0) : 0;
+        int ruleHeight = ruleRow ? ROW + LABEL_LINE : 0;
+        int blocks = 2 + (extraRow ? 1 : 0) + (ruleRow ? 1 : 0); // recipe and value row are always there
+        int free = Math.max(0, (BAND_BOTTOM - BAND_TOP) - (recipeHeight + extraHeight + ruleHeight + ROW));
+        int gap = free / blocks;
+        // The pixels that do not divide evenly go to the topmost gaps, one each. At most three pixels
+        // are ever shared out this way, so no two gaps differ by more than one.
+        int spare = free % blocks;
 
-        // Placed from the bottom up: the tag row's home is the foot of the band for every type alike.
-        tagRowY = BAND_BOTTOM - ROW;
-        int cursor = tagRowY;
+        int y = BAND_TOP + gap + (spare-- > 0 ? 1 : 0);
+        int recipeY = y;
+        y += recipeHeight + gap + (spare-- > 0 ? 1 : 0);
+        if (extraRow) {
+            extraCaptionY = extraCaption ? y : -1;
+            extraRowY = y + (extraCaption ? LABEL_LINE : 0);
+            y += extraHeight + gap + (spare-- > 0 ? 1 : 0);
+        } else {
+            extraRowY = -1;
+            extraCaptionY = -1;
+        }
         if (ruleRow) {
-            ruleRowY = cursor - gap - ROW;
-            cursor = ruleRowY - LABEL_LINE;
+            ruleRowY = y + LABEL_LINE;
+            y += ruleHeight + gap + (spare-- > 0 ? 1 : 0);
         } else {
             ruleRowY = -1;
         }
-        if (create) {
-            extraRowY = cursor - gap - ROW;
-            cursor = extraRowY;
-        } else {
-            extraRowY = -1;
-        }
-        // Centred between the id row above and the first thing below, measured to the pixel each of them
-        // actually paints: a caption is a line of text with a pixel of air under it, not a full row, and
-        // centring against the row would leave the recipe visibly closer to the id field than to what
-        // follows it.
-        int belowTop = ruleRow ? ruleRowY - LABEL_LINE + 1 : (create ? extraRowY : tagRowY);
-        int recipeY = BAND_TOP + Math.max(0, (belowTop - BAND_TOP - recipeHeight) / 2);
+        tagRowY = y;
 
         // A short grid and a single result slot both centre on the recipe row rather than hanging off its
         // top, which is what keeps the result beside the middle of a 5x5 or 3x3 grid.
         gridY = recipeY + (recipeHeight - gridRows * SLOT) / 2;
         outputY = recipeY + (recipeHeight - outputRows * SLOT) / 2;
 
-        // ---- horizontal: centre grid → arrow → result in the width left over
+        // ---- horizontal: centre everything the recipe row holds, as one group
+        //
+        // Everything: the grid, the arrow, the results, the campfire pot's seasoning column and the
+        // xp/time column. The last of those used to be pinned to the right margin while the rest was
+        // centred in what was left over, which put the grid a long way from the left edge and the
+        // fields hard against the right one.
         seasoningCount = RecipeModes.seasoningSlots(mode);
-        int seasoningWidth = seasoningCount * SLOT;
-        int bandWidth = WIDTH - 2 * PADDING - (cooking ? COOKING_RESERVE : 0);
         int clusterWidth = gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP + outputColumns * SLOT;
-        // The seasoning column is part of the recipe, not something parked beside it, so what gets
-        // centred is the two of them together.
-        int wholeWidth = clusterWidth + (seasoningCount > 0 ? CLUSTER_GAP + seasoningWidth : 0);
-        gridX = PADDING + Math.max(0, (bandWidth - wholeWidth) / 2);
+        int seasoningWidth = seasoningCount > 0 ? CLUSTER_GAP + seasoningCount * SLOT : 0;
+        int sideWidth = sideColumn ? CLUSTER_GAP + SIDE_RESERVE : 0;
+        int wholeWidth = clusterWidth + seasoningWidth + sideWidth;
+        gridX = PADDING + Math.max(0, (WIDTH - 2 * PADDING - wholeWidth) / 2);
         outputX = gridX + gridColumns * SLOT + CLUSTER_GAP + ARROW_WIDTH + CLUSTER_GAP;
 
-        if (cooking) {
-            sideX = WIDTH - PADDING - SIDE_FIELD_WIDTH;
+        if (sideColumn) {
+            // Past the recipe and whatever sits beside it, with room in front of each field for its
+            // caption, which is drawn right-aligned against the field.
+            sideX = gridX + clusterWidth + seasoningWidth + CLUSTER_GAP + SIDE_LABEL_WIDTH;
             int centre = recipeY + recipeHeight / 2;
             expY = centre - 20;
             sideTimeY = centre + 4;
@@ -214,9 +238,5 @@ public final class EditorLayout {
 
     private static int ceilDiv(int value, int divisor) {
         return (value + divisor - 1) / divisor;
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
     }
 }

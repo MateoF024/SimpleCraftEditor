@@ -107,7 +107,7 @@ public class SeasoningScreen extends Screen {
                 Component.translatable("sce.hint.seasoning_tag"));
         tagBox.setMaxLength(200);
         tagBox.setValue(tag);
-        tagBox.setHint(Component.translatable("sce.hint.seasoning_tag"));
+        tagBox.setHint(FieldAssist.hint("sce.hint.seasoning_tag"));
         tagBox.setResponder(value -> tag = value);
         addRenderableWidget(tagBox);
         fields.add(tagBox, FieldAssist.id(), FieldAssist.Source.ITEM_TAGS);

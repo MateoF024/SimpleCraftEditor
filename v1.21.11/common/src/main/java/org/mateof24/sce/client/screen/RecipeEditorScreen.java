@@ -54,6 +54,21 @@ import java.util.Optional;
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
     private static final String[] HEAT_NAMES = {"none", "heated", "superheated"};
 
+    /**
+     * Where the Set button starts on the value row. Its block runs from here to the panel's right
+     * margin, and anything that wants to line up with that block measures from the same number rather
+     * than from one written down again beside it.
+     */
+    private static final int VALUE_BUTTONS_X = 138;
+
+    /** Width of the chance and duration boxes on a type's own row. */
+    private static final int SMALL_FIELD_WIDTH = 40;
+    /** Space between a caption and the box it names. */
+    private static final int LABEL_GAP = 4;
+    /** Space between one thing on the row and the next, and the tighter one used when it will not fit. */
+    private static final int ITEM_GAP = 8;
+    private static final int TIGHT_ITEM_GAP = 4;
+
     private static final Identifier BG_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_bg.png");
     static final Identifier SLOT_TEXTURE = Identifier.fromNamespaceAndPath("sce", "textures/gui/sce_slot.png");
     /** The same slot in a cooler grey, for the ones that take a quantity of fluid instead of an item. */
@@ -140,6 +155,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private EditBox chanceBox;
     /** Marks fields holding something unusable and completes the ones naming a registry entry. */
     private final FieldAssist fields = new FieldAssist();
+
+    /** The captions on a type's own row, each already at the x init() measured for it. */
+    private final List<Caption> extraCaptions = new ArrayList<>();
+
+    /** A caption and where it goes. Worked out with the widget it names, so the two cannot drift apart. */
+    private record Caption(Component text, int x) {
+    }
 
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -323,6 +345,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         super.init();
         layout = new EditorLayout(mode);
         fields.clear();
+        // The completion list belongs inside the panel, not hanging off its edge.
+        fields.limits(leftPos + 2, leftPos + EditorLayout.WIDTH - 2);
+        extraCaptions.clear();
         // Rebuilt from scratch every time; the rule buttons are not there for every type, so the
         // references have to go away with them or a right-click would reach a button that is gone.
         matchRule = null;
@@ -406,7 +431,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 Component.translatable("sce.hint.value"));
         valueBox.setMaxLength(200);
         valueBox.setValue(valueText);
-        valueBox.setHint(Component.translatable("sce.hint.value_id"));
+        valueBox.setHint(FieldAssist.hint("sce.hint.value_id"));
         valueBox.setResponder(s -> valueText = s);
         addRenderableWidget(valueBox);
         fields.add(valueBox, FieldAssist.idOrTag(),
@@ -423,7 +448,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             fields.add(amountBox, FieldAssist.intAtLeast(1));
         }
         addRenderableWidget(Button.builder(Component.translatable("sce.button.set_value"), b -> applyValue())
-                .bounds(leftPos + 138, topPos + valueRowY, 44, 16)
+                .bounds(leftPos + VALUE_BUTTONS_X, topPos + valueRowY, 44, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(
                             Component.translatable(fluids ? "sce.tooltip.set_value_fluid" : "sce.tooltip.set_value"))).build());
         addRenderableWidget(Button.builder(Component.translatable("sce.button.clear_slot"), b -> clearSelected())
@@ -436,66 +461,38 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                     Component.translatable(mirrored ? "sce.toggle.on" : "sce.toggle.off")), b -> {
                 mirrored = !mirrored;
                 rebuildWidgets();
-            }).bounds(leftPos + EditorLayout.WIDTH - EditorLayout.PADDING - 84, topPos + layout.mirroredY, 84, 16)
+                // Exactly the block Set and Clear occupy under it: same left edge, same right edge.
+                // Eighty-four pixels was near enough to look deliberate and far enough to look wrong.
+            }).bounds(leftPos + VALUE_BUTTONS_X, topPos + layout.mirroredY,
+                    EditorLayout.WIDTH - EditorLayout.PADDING - VALUE_BUTTONS_X, 16)
                     .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.mirrored"))).build());
         }
 
-        if (RecipeModes.isCooking(mode)) {
+        if (RecipeModes.hasSideColumn(mode)) {
             expBox = new EditBox(font, leftPos + layout.sideX, topPos + layout.expY,
                     EditorLayout.SIDE_FIELD_WIDTH, 16, Component.translatable("sce.hint.exp"));
             expBox.setValue(Float.toString(pendingExp));
             expBox.setResponder(s -> pendingExp = parseFloat(s, pendingExp));
+            expBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    Component.translatable("sce.tooltip.exp")));
             addRenderableWidget(expBox);
             fields.add(expBox, FieldAssist.decimalBetween(0.0f, Float.MAX_VALUE));
             timeBox = new EditBox(font, leftPos + layout.sideX, topPos + layout.sideTimeY,
                     EditorLayout.SIDE_FIELD_WIDTH, 16, Component.translatable("sce.hint.time"));
             timeBox.setValue(Integer.toString(pendingTime));
             timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
+            timeBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                    Component.translatable("sce.tooltip.cook_time")));
             addRenderableWidget(timeBox);
             // Nothing can display a cooking recipe with no time, and saving refuses one, so the field
             // says so while it is still being typed.
             fields.add(timeBox, FieldAssist.intAtLeast(1));
         }
 
-        if (create) {
-            // Create's extra controls sit in the free row below the recipe. Which of them are there is
-            // the type's own business: Create refuses a recipe that names a duration or a heat it cannot
-            // use, so a field that could only ever produce a rejected recipe is not drawn at all.
-            chanceBox = new EditBox(font, leftPos + 52, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.chance"));
-            chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
-            chanceBox.setResponder(s -> {
-                if (selectedOutput >= 0) {
-                    outputChance[selectedOutput] = Mth.clamp(parseFloat(s, outputChance[selectedOutput]), 0.0f, 1.0f);
-                }
-            });
-            addRenderableWidget(chanceBox);
-            fields.add(chanceBox, FieldAssist.decimalBetween(0.0f, 1.0f));
-            if (RecipeModes.allowsDuration(mode)) {
-                timeBox = new EditBox(font, leftPos + 124, topPos + layout.extraRowY, 36, 16, Component.translatable("sce.hint.time"));
-                timeBox.setValue(Integer.toString(pendingTime));
-                timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
-                addRenderableWidget(timeBox);
-                // Create fills in its own duration when the recipe leaves this at zero.
-                fields.add(timeBox, FieldAssist.intAtLeast(0));
-            }
-            if (heated()) {
-                addRenderableWidget(Button.builder(Component.translatable("sce.button.heat", Component.translatable("sce.heat." + HEAT_NAMES[heatIndex])), b -> {
-                    heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
-                    rebuildWidgets();
-                }).bounds(leftPos + 164, topPos + layout.extraRowY, 68, 16)
-                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.heat"))).build());
-            }
-
-            if (RecipeModes.hasKeepHeldItem(mode)) {
-                // Takes the room the duration and the heat would have used, neither of which these two
-                // types have. This is the flag behind every waxing and de-oxidising recipe in the game.
-                addRenderableWidget(Button.builder(Component.translatable("sce.button.keep_held",
-                        Component.translatable(keepHeldItem ? "sce.toggle.on" : "sce.toggle.off")), b -> {
-                    keepHeldItem = !keepHeldItem;
-                    rebuildWidgets();
-                }).bounds(leftPos + 96, topPos + layout.extraRowY, 136, 16)
-                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("sce.tooltip.keep_held"))).build());
-            }
+        // The row below the recipe holds whatever fields the type has, measured and centred rather
+        // than placed at fixed pixels.
+        if (layout.extraRowY >= 0) {
+            buildExtraRow();
         }
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.save"), b -> save()).bounds(leftPos + 8, topPos + EditorLayout.BUTTON_ROW_Y, 52, 20).build());
@@ -514,6 +511,139 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             pendingCursorY = -1.0;
             GLFW.glfwSetCursorPos(minecraft.getWindow().handle(), cursorX, cursorY);
         }
+    }
+
+    /**
+     * One thing on a type's own row: a box with a caption, or a button that carries its own text.
+     *
+     * <p>Built before anything is placed, because where each one goes depends on how wide all of them
+     * are together, and that cannot be known until the last is described.
+     */
+    private final class RowItem {
+        private final Component label;
+        private final int boxWidth;
+        private final java.util.function.IntConsumer build;
+
+        RowItem(Component label, int boxWidth, java.util.function.IntConsumer build) {
+            this.label = label;
+            this.boxWidth = boxWidth;
+            this.build = build;
+        }
+
+        int captionWidth() {
+            return label == null ? 0 : font.width(label) + LABEL_GAP;
+        }
+
+        int width() {
+            return captionWidth() + boxWidth;
+        }
+    }
+
+    /**
+     * The row of fields under the recipe.
+     *
+     * <p>Measured rather than placed at fixed pixels: the captions are translated, and a column of boxes
+     * written for the English word would sit on top of the Spanish one. The group is then centred on the
+     * panel, so a type with one field does not leave the right half of its row empty.
+     */
+    private void buildExtraRow() {
+        List<RowItem> items = new ArrayList<>();
+        if (RecipeModes.hasChance(mode)) {
+            items.add(new RowItem(Component.translatable("sce.label.chance"), SMALL_FIELD_WIDTH, x -> {
+                chanceBox = new EditBox(font, leftPos + x, topPos + layout.extraRowY, SMALL_FIELD_WIDTH, 16,
+                        Component.translatable("sce.hint.chance"));
+                chanceBox.setValue(selectedOutput >= 0 ? Float.toString(outputChance[selectedOutput]) : "1.0");
+                chanceBox.setResponder(s -> {
+                    if (selectedOutput >= 0) {
+                        outputChance[selectedOutput] =
+                                Mth.clamp(parseFloat(s, outputChance[selectedOutput]), 0.0f, 1.0f);
+                    }
+                });
+                chanceBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                        Component.translatable("sce.tooltip.chance")));
+                addRenderableWidget(chanceBox);
+                fields.add(chanceBox, FieldAssist.decimalBetween(0.0f, 1.0f));
+            }));
+        }
+        if (RecipeModes.allowsDuration(mode)) {
+            items.add(new RowItem(Component.translatable("sce.label.time"), SMALL_FIELD_WIDTH, x -> {
+                timeBox = new EditBox(font, leftPos + x, topPos + layout.extraRowY, SMALL_FIELD_WIDTH, 16,
+                        Component.translatable("sce.hint.time"));
+                timeBox.setValue(Integer.toString(pendingTime));
+                timeBox.setResponder(s -> pendingTime = parseInt(s, pendingTime));
+                timeBox.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                        Component.translatable("sce.tooltip.create_time")));
+                addRenderableWidget(timeBox);
+                // Create fills in its own duration when the recipe leaves this at zero.
+                fields.add(timeBox, FieldAssist.intAtLeast(0));
+            }));
+        }
+        if (heated()) {
+            Component text = Component.translatable("sce.button.heat",
+                    Component.translatable("sce.heat." + HEAT_NAMES[heatIndex]));
+            items.add(new RowItem(null, buttonWidth(text), x ->
+                    addRenderableWidget(Button.builder(text, b -> {
+                        heatIndex = (heatIndex + 1) % HEAT_NAMES.length;
+                        rebuildWidgets();
+                    }).bounds(leftPos + x, topPos + layout.extraRowY, buttonWidth(text), 16)
+                            .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                                    Component.translatable("sce.tooltip.heat"))).build())));
+        }
+        if (RecipeModes.hasKeepHeldItem(mode)) {
+            // The flag behind every waxing and de-oxidising recipe in the game.
+            Component text = Component.translatable("sce.button.keep_held",
+                    Component.translatable(keepHeldItem ? "sce.toggle.on" : "sce.toggle.off"));
+            items.add(new RowItem(null, buttonWidth(text), x ->
+                    addRenderableWidget(Button.builder(text, b -> {
+                        keepHeldItem = !keepHeldItem;
+                        rebuildWidgets();
+                    }).bounds(leftPos + x, topPos + layout.extraRowY, buttonWidth(text), 16)
+                            .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                                    Component.translatable("sce.tooltip.keep_held"))).build())));
+        }
+        if (items.isEmpty()) {
+            return;
+        }
+
+        // One field on its own: its name goes centred above it rather than beside it, which is what the
+        // layout left the extra line for.
+        if (layout.extraCaptionY >= 0) {
+            RowItem only = items.get(0);
+            extraCaptions.add(new Caption(only.label, (EditorLayout.WIDTH - font.width(only.label)) / 2));
+            only.build.accept((EditorLayout.WIDTH - only.boxWidth) / 2);
+            return;
+        }
+
+        int available = EditorLayout.WIDTH - 2 * EditorLayout.PADDING;
+        int gap = ITEM_GAP;
+        int total = totalWidth(items, gap);
+        if (total > available) {
+            // Tighten the spacing first, and only fall back to the left margin when even that is not
+            // enough for what the row holds.
+            gap = TIGHT_ITEM_GAP;
+            total = totalWidth(items, gap);
+        }
+        int x = total > available ? EditorLayout.PADDING : (EditorLayout.WIDTH - total) / 2;
+        for (RowItem item : items) {
+            if (item.label != null) {
+                extraCaptions.add(new Caption(item.label, x));
+            }
+            item.build.accept(x + item.captionWidth());
+            x += item.width() + gap;
+        }
+    }
+
+    private static int totalWidth(List<RowItem> items, int gap) {
+        int total = gap * (items.size() - 1);
+        for (RowItem item : items) {
+            total += item.width();
+        }
+        return total;
+    }
+
+    /** A button wide enough for its own text, so "Super" and "Superheated" both fit. */
+    private int buttonWidth(Component text) {
+        return Math.max(40, font.width(text) + 12);
     }
 
     /**
@@ -1178,17 +1308,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (RecipeModes.isCooking(mode)) {
+        if (RecipeModes.hasSideColumn(mode)) {
             // Right-aligned against their fields, so the pair reads as one column wherever the layout
             // put it rather than needing a position of its own.
             drawRightAligned(graphics, Component.translatable("sce.label.xp"), layout.sideX - 4, layout.expY + 4);
             drawRightAligned(graphics, Component.translatable("sce.label.time"), layout.sideX - 4, layout.sideTimeY + 4);
         }
-        if (create) {
-            graphics.drawString(font, Component.translatable("sce.label.chance"), 8, layout.extraRowY + 4, 0xFF404040, false);
-            if (RecipeModes.allowsDuration(mode)) {
-                graphics.drawString(font, Component.translatable("sce.label.time"), 96, layout.extraRowY + 4, 0xFF404040, false);
-            }
+        // The captions on a type's own row, each where init() measured it: beside its box, or centred
+        // on the line above when the row holds that one field and nothing else.
+        int captionY = layout.extraCaptionY >= 0 ? layout.extraCaptionY : layout.extraRowY + 4;
+        for (Caption caption : extraCaptions) {
+            graphics.drawString(font, caption.text(), caption.x(), captionY, 0xFF404040, false);
         }
         if (RecipeModes.isCrafting(mode) && keptType == null && layout.ruleRowY >= 0) {
             // The captions for the two rule buttons, in the line the layout keeps free above them.
