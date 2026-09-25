@@ -50,6 +50,13 @@ public final class FieldAssist {
         ITEM_TAGS,
         /** Items, or item tags once the text starts with {@code #}: the pair the value row offers. */
         ITEMS_OR_TAGS,
+        /**
+         * The same pair, narrowed to the items an anvil can mend - the ones with durability.
+         *
+         * <p>Every other item in the game is a rule that can never fire: {@code AnvilMenu} asks whether
+         * a material repairs something only after finding that the something can be damaged at all.
+         */
+        REPAIRABLE_OR_TAGS,
         /** Fluids, or fluid tags once the text starts with {@code #}. */
         FLUIDS,
         /** Every recipe on the server, including the ones this mod has authored. */
@@ -102,8 +109,13 @@ public final class FieldAssist {
      */
     private int leftLimit = Integer.MIN_VALUE;
     private int rightLimit = Integer.MAX_VALUE;
+    /** The lowest line the list may reach. Unset means unbounded, which is right for a tall screen. */
+    private int bottomLimit = Integer.MAX_VALUE;
     /** First row drawn, so a long list scrolls with the selection instead of being cut off. */
     private int offset;
+    /** Where the pointer was last frame, so that resting it over the list is not the same as moving it. */
+    private int lastMouseX = Integer.MIN_VALUE;
+    private int lastMouseY = Integer.MIN_VALUE;
 
     /**
      * Left edge of the completion list: under the field it belongs to, pulled back when that would push
@@ -116,8 +128,17 @@ public final class FieldAssist {
 
     /** Keeps the completion list inside these bounds. Set it after {@link #clear()}, which forgets them. */
     public void limits(int left, int right) {
+        limits(left, right, Integer.MAX_VALUE);
+    }
+
+    /**
+     * The same, and a floor as well. A field near the foot of a screen has no room under it, and a list
+     * drawn off the bottom edge is a list nobody can read, so below this line it opens upwards instead.
+     */
+    public void limits(int left, int right, int bottom) {
         leftLimit = left;
         rightLimit = right;
+        bottomLimit = bottom;
     }
 
     /** Forgets every field; call when a screen rebuilds its widgets. */
@@ -147,6 +168,30 @@ public final class FieldAssist {
     }
 
     // ------------------------------------------------------------------ rules
+
+    /**
+     * Every item an anvil can mend, worked out once.
+     *
+     * <p>"Can be mended" is the same question {@code AnvilMenu} asks before it asks anything else:
+     * whether a fresh one of these can take damage. Worked out once because the item registry is frozen
+     * by the time anyone types in a field, and walking it on every keystroke is a thousand item stacks
+     * built per character.
+     */
+    private static List<String> repairableItems() {
+        if (repairable == null) {
+            List<String> found = new ArrayList<>();
+            BuiltInRegistries.ITEM.forEach(item -> {
+                if (new net.minecraft.world.item.ItemStack(item).isDamageableItem()) {
+                    found.add(BuiltInRegistries.ITEM.getKey(item).toString());
+                }
+            });
+            repairable = List.copyOf(found);
+        }
+        return repairable;
+    }
+
+    /** Null until the first field asks for it; the registry cannot change after that. */
+    private static List<String> repairable;
 
     /** An id such as {@code minecraft:stone}; a bare path is valid too, as vanilla assumes the namespace. */
     public static Predicate<String> id() {
@@ -223,9 +268,18 @@ public final class FieldAssist {
         updateGhost(target.getValue());
     }
 
-    /** Moves the highlight to the row the pointer is over, if it is over one. */
+    /**
+     * Moves the highlight to the row the pointer is over - but only just after the pointer has moved.
+     *
+     * <p>This runs every frame. A pointer left lying over the list would otherwise put the highlight
+     * back on the same row as fast as the arrows or the wheel could move it off, which reads as a list
+     * that does not answer the keyboard at all.
+     */
     private void hover(int mouseX, int mouseY) {
-        if (matches.isEmpty()) {
+        boolean moved = mouseX != lastMouseX || mouseY != lastMouseY;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        if (!moved || matches.isEmpty()) {
             return;
         }
         int row = (int) ((mouseY - popupTop()) / LINE_HEIGHT);
@@ -285,6 +339,14 @@ public final class FieldAssist {
                     BuiltInRegistries.ITEM.keySet().forEach(id -> out.add(id.toString()));
                 }
             }
+            case REPAIRABLE_OR_TAGS -> {
+                if (tagged) {
+                    BuiltInRegistries.ITEM.getTags()
+                            .forEach(tag -> out.add("#" + tag.key().location()));
+                } else {
+                    out.addAll(repairableItems());
+                }
+            }
             case ITEM_TAGS -> BuiltInRegistries.ITEM.getTags()
                     .forEach(tag -> out.add(tag.key().location().toString()));
             case FLUIDS -> {
@@ -308,13 +370,22 @@ public final class FieldAssist {
         return out;
     }
 
-    /** Writes the rest of the highlighted entry into the field as grey ghost text, as commands do. */
+    /**
+     * Writes the rest of the highlighted entry into the field as grey ghost text, as commands do - and
+     * only while the whole entry would fit inside the field.
+     *
+     * <p>The game draws a suggestion straight on from the cursor and never clips it to the box, so one
+     * too long to fit runs out past the frame and over whatever is beside it. The list below the field
+     * is already showing the entry in full; the ghost is a convenience, and a convenience that draws
+     * over the next field is not one.
+     */
     private void updateGhost(String typed) {
         if (target == null) {
             return;
         }
         String selection = selectedText();
         if (selection != null && selection.length() > typed.length()
+                && Minecraft.getInstance().font.width(selection) <= target.getWidth() - 8
                 && selection.regionMatches(true, 0, typed, 0, typed.length())) {
             target.setSuggestion(selection.substring(typed.length()));
         } else {
@@ -453,7 +524,9 @@ public final class FieldAssist {
     }
 
     private int popupTop() {
-        return target.getY() + target.getHeight();
+        int below = target.getY() + target.getHeight();
+        int tall = shownCount() * LINE_HEIGHT;
+        return below + tall > bottomLimit ? target.getY() - tall : below;
     }
 
     private int width() {

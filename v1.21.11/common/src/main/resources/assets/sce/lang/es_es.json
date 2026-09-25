@@ -3,6 +3,27 @@
   "key.category.sce.editor": "Simple Craft Editor",
   "key.sce.open_manager": "Abrir editor de recetas",
   "sce.manager.title": "Simple Craft Editor",
+  "sce.anvil.title": "Reglas de reparación del yunque",
+  "sce.anvil.added": "Regla añadida.",
+  "sce.anvil.removed": "Regla quitada.",
+  "sce.anvil.applied": "Cambios aplicados.",
+  "sce.anvil.needs_reload": "EMI y REI la muestran tras recargar recursos (F3+T).",
+  "sce.cmd.anvil_none": "Sin reglas de yunque.",
+  "sce.cmd.anvil_count": "%s regla(s) de yunque:",
+  "sce.anvil.new": "Nueva regla:",
+  "sce.anvil.add": "Añadir",
+  "sce.anvil.empty": "Aún no hay reglas de yunque.",
+  "sce.anvil.label_target": "Repara:",
+  "sce.anvil.label_material": "Con:",
+  "sce.anvil.hint_item": "objeto o #etiqueta",
+  "sce.anvil.mode.replace": "En vez de",
+  "sce.anvil.mode.add": "Además de",
+  "sce.list.showing": "Mostrando %s-%s de %s",
+  "sce.button.anvil_rules": "Reglas del yunque...",
+  "sce.tooltip.anvil_rules": "Qué acepta el yunque como material de reparación.",
+  "sce.tooltip.anvil_new": "Añade esta regla a la lista. Hay que rellenar los dos lados.",
+  "sce.tooltip.anvil_mode": "En vez de: sólo este material lo repara. Además de: éste también, aparte del del juego.",
+  "sce.tooltip.anvil_remove": "Quita esta regla.",
   "sce.editor.title": "Editor de recetas",
   "sce.raw.title": "JSON de receta: %s",
   "sce.sequence.title": "Editor de montaje secuenciado",

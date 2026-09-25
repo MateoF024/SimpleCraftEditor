@@ -27,7 +27,8 @@ public class RecipeManagerScreen extends BaseSceScreen {
 
     private final List<Row> rows = new ArrayList<>();
     private final StatusLine status = new StatusLine();
-    private int scroll;
+    /** The bar down the right of the list: where the list is, and the handle for moving it. */
+    private final ScrollBar bar = new ScrollBar();
     private int lastStateSig;
 
     /**
@@ -67,13 +68,21 @@ public class RecipeManagerScreen extends BaseSceScreen {
 
         addRenderableWidget(Button.builder(Component.translatable("sce.button.new_recipe"), b ->
                 SceNetworking.sendOpenEditor("", 0)).bounds(width / 2 - 155, height - 30, 100, 20).build());
+        // Off to the right, past Done, which belongs where a screen's Done belongs. The rules are part
+        // of what this screen is for - what the game does when you put two things together - even
+        // though they are not recipes.
+        addRenderableWidget(Button.builder(Component.translatable("sce.button.anvil_rules"), b ->
+                        minecraft.setScreen(new AnvilRulesScreen(this)))
+                .bounds(width / 2 + 55, height - 30, 100, 20)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                        Component.translatable("sce.tooltip.anvil_rules"))).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
-                .bounds(width / 2 + 55, height - 30, 100, 20).build());
+                .bounds(width / 2 - 50, height - 30, 100, 20).build());
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
-        scroll = Mth.clamp(scroll, 0, Math.max(0, rows.size() - maxRows));
-        for (int i = 0; i < maxRows && scroll + i < rows.size(); i++) {
-            Row row = rows.get(scroll + i);
+        bar.place(width / 2 + 168 + ScrollBar.GAP, LIST_TOP, ROW_HEIGHT, maxRows, rows.size());
+        for (int i = 0; i < maxRows && bar.scroll() + i < rows.size(); i++) {
+            Row row = rows.get(bar.scroll() + i);
             int y = LIST_TOP + i * ROW_HEIGHT;
             if (row.disabled()) {
                 addRenderableWidget(Button.builder(Component.translatable("sce.button.edit"), b ->
@@ -140,13 +149,18 @@ public class RecipeManagerScreen extends BaseSceScreen {
         status.drawCentered(graphics, font, width / 2, height - 44);
 
         int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
+        // The same bar and the same count as the anvil rules. This list scrolled with the wheel and said
+        // nothing about it, so forty recipes looked exactly like eleven.
+        bar.place(width / 2 + 168 + ScrollBar.GAP, LIST_TOP, ROW_HEIGHT, maxRows, rows.size());
+        bar.draw(graphics);
+        bar.drawCount(graphics, font, width / 2 + 168, LIST_TOP - 12);
         if (rows.isEmpty()) {
             graphics.drawCenteredString(font, Component.translatable("sce.manager.empty"),
                     width / 2, LIST_TOP + 10, 0xA0A0A0);
         }
         MutableComponent hoverTooltip = null;
-        for (int i = 0; i < maxRows && scroll + i < rows.size(); i++) {
-            Row row = rows.get(scroll + i);
+        for (int i = 0; i < maxRows && bar.scroll() + i < rows.size(); i++) {
+            Row row = rows.get(bar.scroll() + i);
             int y = LIST_TOP + i * ROW_HEIGHT;
             int x = width / 2 - 155;
             graphics.renderItem(row.icon(), x, y);
@@ -188,9 +202,32 @@ public class RecipeManagerScreen extends BaseSceScreen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        int maxRows = Math.max(1, (height - LIST_TOP - 40) / ROW_HEIGHT);
-        scroll = Mth.clamp(scroll - (int) Math.signum(delta), 0, Math.max(0, rows.size() - maxRows));
-        rebuildWidgets();
+        if (bar.setScroll(bar.scroll() - (int) Math.signum(delta))) {
+            rebuildWidgets();
+        }
         return true;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (bar.mouseClicked(mouseX, mouseY, button)) {
+            rebuildWidgets();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (bar.mouseDragged(mouseY)) {
+            rebuildWidgets();
+        }
+        return bar.dragging() || super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        bar.mouseReleased();
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 }
