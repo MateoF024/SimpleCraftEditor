@@ -42,3 +42,8 @@ docs/PROJECT_STATE.md
 docs/CURSEFORGE_DESCRIPTION.html
 
 docs/ANALISIS_1.1.0.md
+
+# Version sketches and planning notes dropped at the root while working. "Update 1.3.0 SCE.txt" is the
+# hand-written sketch this version was planned from; "Update 1.4.0.md" is what the next one inherited.
+# Ignored by pattern so the next one does not have to be remembered.
+/Update *
