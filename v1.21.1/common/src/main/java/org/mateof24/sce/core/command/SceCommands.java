@@ -17,6 +17,8 @@ import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.ScePerf;
 import org.mateof24.sce.core.state.RecipeOutputIndex;
 import org.mateof24.sce.core.state.RecipeState;
+import org.mateof24.sce.core.anvil.AnvilRule;
+import org.mateof24.sce.core.anvil.AnvilRules;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.net.SceNetworking;
 
@@ -72,7 +74,70 @@ public final class SceCommands {
                         .then(Commands.literal("disabled").executes(context -> list(context, "disabled")))
                         .then(Commands.literal("generated").executes(context -> list(context, "generated"))))
                 .then(Commands.literal("reload").executes(SceCommands::reload))
+                .then(buildAnvil())
                 .then(buildDebug()));
+    }
+
+    /**
+     * {@code /sce anvil} lists the repair rules; {@code /sce anvil test <item> <material>} says what the
+     * anvil would do with those two and why.
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildAnvil() {
+        com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> anvil =
+                Commands.literal("anvil");
+        anvil.executes(SceCommands::anvilList);
+        anvil.then(Commands.literal("test")
+                .then(Commands.argument("item", ResourceLocationArgument.id())
+                        .suggests(suggestItems())
+                        .then(Commands.argument("material", ResourceLocationArgument.id())
+                                .suggests(suggestItems())
+                                .executes(SceCommands::anvilTest))));
+        return anvil;
+    }
+
+    private static int anvilList(CommandContext<CommandSourceStack> context) {
+        java.util.List<AnvilRule> rules = AnvilRules.INSTANCE.rules();
+        if (rules.isEmpty()) {
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.anvil_none"), false);
+            return 1;
+        }
+        context.getSource().sendSuccess(() ->
+                Component.translatable("sce.cmd.anvil_count", rules.size()), false);
+        for (AnvilRule rule : rules) {
+            context.getSource().sendSuccess(() -> Component.literal("  " + rule.target() + " \u2192 "
+                    + rule.material() + "  (" + rule.mode().key() + ")"), false);
+        }
+        return rules.size();
+    }
+
+    /**
+     * Answers for one pairing, and says which of the two answers it is: a rule decided it, or nothing
+     * did and the game's own table was left to answer.
+     */
+    private static int anvilTest(CommandContext<CommandSourceStack> context) {
+        ResourceLocation itemId = ResourceLocationArgument.getId(context, "item");
+        ResourceLocation materialId = ResourceLocationArgument.getId(context, "material");
+        if (!BuiltInRegistries.ITEM.containsKey(itemId) || !BuiltInRegistries.ITEM.containsKey(materialId)) {
+            context.getSource().sendFailure(Component.literal("No such item: "
+                    + (BuiltInRegistries.ITEM.containsKey(itemId) ? materialId : itemId)));
+            return 0;
+        }
+        net.minecraft.world.item.ItemStack target =
+                new net.minecraft.world.item.ItemStack(BuiltInRegistries.ITEM.get(itemId));
+        net.minecraft.world.item.ItemStack material =
+                new net.minecraft.world.item.ItemStack(BuiltInRegistries.ITEM.get(materialId));
+        AnvilRules.Verdict verdict = AnvilRules.INSTANCE.verdict(target, material);
+        boolean vanilla = target.getItem().isValidRepairItem(target, material);
+        String line = switch (verdict) {
+            case YES -> "a rule allows it";
+            case NO -> "a rule forbids it (one of them replaces the game's material)";
+            case UNKNOWN -> "no rule mentions it, so the game answers: " + (vanilla ? "yes" : "no");
+        };
+        context.getSource().sendSuccess(() -> Component.literal(
+                itemId + " mended with " + materialId + ": "
+                        + (verdict == AnvilRules.Verdict.UNKNOWN ? vanilla : verdict == AnvilRules.Verdict.YES)
+                        + " - " + line), false);
+        return 1;
     }
 
     /**

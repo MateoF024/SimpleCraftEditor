@@ -30,9 +30,12 @@ import org.mateof24.sce.core.edit.RecipeCompiler;
 import org.mateof24.sce.core.edit.RecipeDraft;
 import org.mateof24.sce.core.edit.RecipeModes;
 import org.mateof24.sce.core.state.RecipeOutputIndex;
+import org.mateof24.sce.core.anvil.AnvilRule;
+import org.mateof24.sce.core.anvil.AnvilRules;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.menu.RecipeEditorMenu;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +61,8 @@ public final class SceNetworking {
     public static final ResourceLocation SAVE_RESULT = channel("save_result");
     public static final ResourceLocation RECIPES_FOR = channel("recipes_for");
     public static final ResourceLocation RECIPE_PATCH = channel("recipe_patch");
+    /** The anvil rules, sent back whole after any edit to them. */
+    public static final ResourceLocation SET_ANVIL_RULES = channel("set_anvil_rules");
 
     private static final int MAX_JSON = 1024 * 1024;
 
@@ -124,6 +129,16 @@ public final class SceNetworking {
             int mode = buf.readVarInt();
             String seed = buf.readUtf();
             context.queue(() -> handleOpenEditor(context.getPlayer(), idString, mode, seed));
+        });
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, SET_ANVIL_RULES, (buf, context) -> {
+            List<AnvilRule> rules = readAnvilRules(buf);
+            context.queue(() -> ifAllowed(context.getPlayer(), player -> {
+                AnvilRules.INSTANCE.set(rules);
+                AnvilRules.INSTANCE.save();
+                // Everyone, not just the sender: the rules decide what the anvil does for every player
+                // on the server, and the recipe viewers read them on each client.
+                syncToAll(player.getServer());
+            }));
         });
         NetworkManager.registerReceiver(NetworkManager.Side.C2S, SET_SLOT, (buf, context) -> {
             int slotId = buf.readVarInt();
@@ -445,9 +460,46 @@ public final class SceNetworking {
             buf.writeBoolean(manager.state().isGeneratedDisabled(id));  // toggled off
         }
 
+        writeAnvilRules(buf, AnvilRules.INSTANCE.rules());
+
         NetworkManager.sendToPlayer(player, SYNC, buf);
         // One player at a time: the interesting number is what this adds up to across a full server.
         ScePerf.since("build and send one player's editor state", started);
+    }
+
+    /**
+     * The anvil rules on the wire: two strings and a flag each.
+     *
+     * <p>Written as the text the file holds rather than as resolved items, because that is what a rule
+     * is - a rule may name a tag no datapack has defined yet, and turning it into items here would throw
+     * that away on the way to the one screen that has to show it back.
+     */
+    public static void writeAnvilRules(FriendlyByteBuf buf, List<AnvilRule> rules) {
+        buf.writeVarInt(rules.size());
+        for (AnvilRule rule : rules) {
+            buf.writeUtf(rule.target(), 256);
+            buf.writeUtf(rule.material(), 256);
+            buf.writeBoolean(rule.mode() == AnvilRule.Mode.REPLACE);
+        }
+    }
+
+    public static List<AnvilRule> readAnvilRules(FriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        List<AnvilRule> rules = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            String target = buf.readUtf(256);
+            String material = buf.readUtf(256);
+            rules.add(new AnvilRule(target, material,
+                    buf.readBoolean() ? AnvilRule.Mode.REPLACE : AnvilRule.Mode.ADD));
+        }
+        return rules;
+    }
+
+    /** Sends the rules the screen is showing back to the server, which stores them and tells everyone. */
+    public static void sendAnvilRules(List<AnvilRule> rules) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        writeAnvilRules(buf, rules);
+        NetworkManager.sendToServer(SET_ANVIL_RULES, buf);
     }
 
     private static ItemStack disabledDisplay(MinecraftServer server, ResourceLocation id, JsonObject snapshot) {

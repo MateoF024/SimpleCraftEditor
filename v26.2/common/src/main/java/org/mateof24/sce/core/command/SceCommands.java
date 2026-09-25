@@ -18,6 +18,8 @@ import org.mateof24.sce.core.SceDebug;
 import org.mateof24.sce.core.ScePerf;
 import org.mateof24.sce.core.state.RecipeOutputIndex;
 import org.mateof24.sce.core.state.RecipeState;
+import org.mateof24.sce.core.anvil.AnvilRule;
+import org.mateof24.sce.core.anvil.AnvilRules;
 import org.mateof24.sce.core.state.RecipeStateManager;
 import org.mateof24.sce.net.SceNetworking;
 
@@ -73,7 +75,77 @@ public final class SceCommands {
                         .then(Commands.literal("disabled").executes(context -> list(context, "disabled")))
                         .then(Commands.literal("generated").executes(context -> list(context, "generated"))))
                 .then(Commands.literal("reload").executes(SceCommands::reload))
+                .then(buildAnvil())
                 .then(buildDebug()));
+    }
+
+    /**
+     * {@code /sce anvil} lists the repair rules; {@code /sce anvil test <item> <material>} says what the
+     * anvil would do with those two and why.
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildAnvil() {
+        com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> anvil =
+                Commands.literal("anvil");
+        anvil.executes(SceCommands::anvilList);
+        anvil.then(Commands.literal("test")
+                .then(Commands.argument("item", IdentifierArgument.id())
+                        .suggests(suggestItems())
+                        .then(Commands.argument("material", IdentifierArgument.id())
+                                .suggests(suggestItems())
+                                .executes(SceCommands::anvilTest))));
+        return anvil;
+    }
+
+    private static int anvilList(CommandContext<CommandSourceStack> context) {
+        java.util.List<AnvilRule> rules = AnvilRules.INSTANCE.rules();
+        if (rules.isEmpty()) {
+            context.getSource().sendSuccess(() -> Component.translatable("sce.cmd.anvil_none"), false);
+            return 1;
+        }
+        context.getSource().sendSuccess(() ->
+                Component.translatable("sce.cmd.anvil_count", rules.size()), false);
+        for (AnvilRule rule : rules) {
+            context.getSource().sendSuccess(() -> Component.literal("  " + rule.target() + " \u2192 "
+                    + rule.material() + "  (" + rule.mode().key() + ")"), false);
+        }
+        return rules.size();
+    }
+
+    /**
+     * Answers for one pairing, and says which of the two answers it is: a rule decided it, or nothing
+     * did and the game's own table was left to answer.
+     */
+    private static int anvilTest(CommandContext<CommandSourceStack> context) {
+        Identifier itemId = IdentifierArgument.getId(context, "item");
+        Identifier materialId = IdentifierArgument.getId(context, "material");
+        if (!BuiltInRegistries.ITEM.containsKey(itemId) || !BuiltInRegistries.ITEM.containsKey(materialId)) {
+            context.getSource().sendFailure(Component.literal("No such item: "
+                    + (BuiltInRegistries.ITEM.containsKey(itemId) ? materialId : itemId)));
+            return 0;
+        }
+        net.minecraft.world.item.ItemStack target = stackOf(itemId);
+        net.minecraft.world.item.ItemStack material = stackOf(materialId);
+        AnvilRules.Verdict verdict = AnvilRules.INSTANCE.verdict(target, material);
+        // From 1.21.11 the question is asked of the stack, not of its item: what answers is the
+        // minecraft:repairable component rather than a method the item class overrides.
+        boolean vanilla = target.isValidRepairItem(material);
+        String line = switch (verdict) {
+            case YES -> "a rule allows it";
+            case NO -> "a rule forbids it (one of them replaces the game's material)";
+            case UNKNOWN -> "no rule mentions it, so the game answers: " + (vanilla ? "yes" : "no");
+        };
+        context.getSource().sendSuccess(() -> Component.literal(
+                itemId + " mended with " + materialId + ": "
+                        + (verdict == AnvilRules.Verdict.UNKNOWN ? vanilla : verdict == AnvilRules.Verdict.YES)
+                        + " - " + line), false);
+        return 1;
+    }
+
+    /** One of an item, for asking a question about it. The registry hands back a holder here. */
+    private static net.minecraft.world.item.ItemStack stackOf(Identifier id) {
+        return BuiltInRegistries.ITEM.get(id)
+                .map(holder -> new net.minecraft.world.item.ItemStack(holder.value()))
+                .orElse(net.minecraft.world.item.ItemStack.EMPTY);
     }
 
     /**

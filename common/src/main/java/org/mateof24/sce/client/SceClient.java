@@ -186,6 +186,27 @@ public final class SceClient {
         SceNetworking.sendOpenEditor(picked.toString(), -1);
     }
 
+    /**
+     * Whoever wants to hear that the anvil rules have changed - which in practice is the recipe viewer
+     * that can do something about it while the game is running.
+     */
+    private static final List<Runnable> anvilRuleListeners = new ArrayList<>();
+
+    public static void onAnvilRulesChanged(Runnable listener) {
+        anvilRuleListeners.add(listener);
+    }
+
+    private static void anvilRulesChanged() {
+        for (Runnable listener : anvilRuleListeners) {
+            try {
+                listener.run();
+            } catch (Throwable e) {
+                // A viewer that throws here must not take the rest of the sync down with it.
+                SimpleCraftEditor.LOGGER.warn("A recipe viewer failed to take the new anvil rules", e);
+            }
+        }
+    }
+
     private static ItemStack hoveredItem() {
         for (Supplier<ItemStack> provider : HOVERED_PROVIDERS) {
             try {
@@ -274,11 +295,16 @@ public final class SceClient {
             int debugMask = buf.readVarInt();
             List<ClientEditorState.Entry> disabled = readEntries(buf);
             List<ClientEditorState.Entry> generated = readEntries(buf);
+            List<org.mateof24.sce.core.anvil.AnvilRule> anvilRules = SceNetworking.readAnvilRules(buf);
             ScePerf.since("read the editor state the server sent", started);
             context.queue(() -> {
                 // In singleplayer this is the same JVM as the server, so the mask is already set; on a
                 // dedicated server this is how the client learns which categories to log under.
                 SceDebug.setMask(debugMask);
+                // What the anvil here will accept, and what the recipe viewers will show. The two read
+                // the same list, which is the only way they can agree.
+                org.mateof24.sce.core.anvil.AnvilRules.INSTANCE.set(anvilRules);
+                anvilRulesChanged();
                 // The recipe set has just changed, so what the server told us makes an item may no longer
                 // be true. Forget it rather than step through a list that is out of date.
                 cyclingItem = null;
