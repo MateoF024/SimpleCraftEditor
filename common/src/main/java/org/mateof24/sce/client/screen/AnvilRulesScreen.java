@@ -436,6 +436,9 @@ public class AnvilRulesScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         fields.update(mouseX, mouseY);
+        // On this version a screen draws its own backdrop; from 1.21.1 on the base class does it. Without
+        // it this screen is a row of buttons floating over the world, which is not a screen.
+        renderBackground(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 14, 0xFFFFFF);
 

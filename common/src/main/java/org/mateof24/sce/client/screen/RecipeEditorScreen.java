@@ -1357,6 +1357,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // Before the widgets draw: what this decides is read by the fields as they render.
         fields.update(mouseX, mouseY);
+        // On this version a screen draws its own backdrop, container screen or not; from 1.21.1 on the
+        // base class does it. Without it the editor is a panel over an undimmed world, which is the one
+        // place this screen looked unlike every other screen in the game.
+        renderBackground(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
         fields.render(graphics, font);
         if (!menu.getCarried().isEmpty()) {
