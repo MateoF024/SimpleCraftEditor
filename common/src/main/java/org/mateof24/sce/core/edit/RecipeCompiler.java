@@ -520,15 +520,30 @@ public final class RecipeCompiler {
     private static void readCraftingResult(RecipeDraft draft, JsonElement result) {
         if (result != null && result.isJsonObject()) {
             JsonObject object = result.getAsJsonObject();
-            if (object.has("item")) {
-                draft.result = IngredientValue.item(ResourceLocation.tryParse(object.get("item").getAsString()));
+            // "id" is what 1.20.5 and newer call it. A recipe written there and brought back here is
+            // still that author's recipe, so it is read rather than dropped on the floor.
+            String key = object.has("item") ? "item" : (object.has("id") ? "id" : null);
+            if (key != null) {
+                draft.result = IngredientValue.item(ResourceLocation.tryParse(object.get(key).getAsString()));
             }
             draft.resultCount = object.has("count") ? object.get("count").getAsInt() : 1;
+        } else {
+            draft.result = itemFromString(result);
         }
     }
 
+    /** The result of a cooking or stonecutting recipe: a plain id here, an item stack from 1.20.5 on. */
     private static IngredientValue itemFromString(JsonElement element) {
-        if (element == null || !element.isJsonPrimitive()) {
+        if (element == null) {
+            return IngredientValue.empty();
+        }
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            String key = object.has("item") ? "item" : (object.has("id") ? "id" : null);
+            return key == null ? IngredientValue.empty()
+                    : IngredientValue.item(ResourceLocation.tryParse(object.get(key).getAsString()));
+        }
+        if (!element.isJsonPrimitive()) {
             return IngredientValue.empty();
         }
         ResourceLocation id = ResourceLocation.tryParse(element.getAsString());

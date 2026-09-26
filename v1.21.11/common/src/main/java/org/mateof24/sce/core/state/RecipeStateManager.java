@@ -132,6 +132,14 @@ public final class RecipeStateManager {
         }
         RecipeState s = state();
         perf.stage("read our state");
+        // And the tags they name, against the game that is actually running: a tag that is gone
+        // matches nothing and says nothing, so it has to be asked about rather than waited for.
+        if (resourceManager != null) {
+            int realigned = RecipeMigration.alignToThisVersion(s, resourceManager);
+            if (realigned > 0) {
+                RecipeStore.save(s);
+            }
+        }
 
         rawJsonCache.clear();
         injectedIds.clear();
@@ -210,8 +218,32 @@ public final class RecipeStateManager {
             boolean off = s.isGeneratedDisabled(id);
             sb.append("\n  ").append(present ? "PRESENT" : "MISSING")
                     .append(off ? " (toggled off)" : "").append(" - ").append(id);
+            if (!present && !off) {
+                sb.append("\n      because: ").append(whyNotLoaded(id, s.generated().get(id)));
+            }
         }
         return sb.toString();
+    }
+
+    /**
+     * Why a stored recipe never reached the game.
+     *
+     * <p>The load says so once, in a log line, and then the reason is gone - while every screen goes on
+     * showing the recipe, because the manager draws its list and its icons from the stored file rather
+     * than from the game. That gap is exactly where a fault can sit unexplained for a whole test round,
+     * so the parse is simply run again and asked what it did not like.
+     */
+    private String whyNotLoaded(Identifier id, JsonObject json) {
+        if (json == null) {
+            return "there is nothing stored under that id";
+        }
+        try {
+            deserialize(id, json.deepCopy());
+            return "it reads back correctly now - it was something at the time of the load; see the log";
+        } catch (Exception e) {
+            String message = e.getMessage();
+            return message == null || message.isBlank() ? e.toString() : message;
+        }
     }
 
     public RecipeState state() {

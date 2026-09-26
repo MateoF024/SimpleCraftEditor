@@ -1,5 +1,6 @@
 package org.mateof24.sce.core.edit;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -200,10 +201,54 @@ public final class IngredientValue {
      * a list of alternatives, a mod's own ingredient type, a block tag — becomes {@link Kind#RAW} and is
      * carried through whole.
      */
+
+    /**
+     * The same ingredient written the way this version writes it.
+     *
+     * <p>An ingredient is a bare {@code "x"} here and was {@code {"item": "x"}} up to 1.21.1, and a tag
+     * is {@code "#x"} here and was {@code {"tag": "x"}} there. A recipe stored by this mod on one of
+     * those versions carries the older shape, and this game's codec cannot read it - so it is put into
+     * this one on the way in. Kept sources are written back exactly as they came, which is what makes an
+     * untouched ingredient survive a save; normalising before the source is taken is what keeps that
+     * promise from also carrying a shape this version cannot read straight back out to the file.
+     *
+     * <p>Anything with a {@code type} is somebody's own kind of ingredient and is left alone, and so is
+     * an object carrying more than the one key, which is not an ingredient of either shape. A list is a
+     * list of ingredients, so each of them goes through this too.
+     */
+    public static JsonElement normalise(JsonElement element) {
+        if (element == null) {
+            return null;
+        }
+        if (element.isJsonArray()) {
+            JsonArray out = new JsonArray();
+            for (JsonElement child : element.getAsJsonArray()) {
+                out.add(normalise(child));
+            }
+            return out;
+        }
+        if (!element.isJsonObject()) {
+            return element;
+        }
+        JsonObject object = element.getAsJsonObject();
+        if (object.has("type") || object.size() != 1) {
+            return element;
+        }
+        if (object.has("item")) {
+            return new JsonPrimitive(object.get("item").getAsString());
+        }
+        if (object.has("tag")) {
+            return new JsonPrimitive("#" + object.get("tag").getAsString());
+        }
+        return element;
+    }
+
     public static IngredientValue fromIngredientJson(JsonElement element) {
         if (element == null || element.isJsonNull()) {
             return empty();
         }
+        // Whatever version wrote it, read it as this one spells it.
+        element = normalise(element);
         if (element.isJsonPrimitive()) {
             // The shape this version writes: "minecraft:wheat", or "#minecraft:planks" for a tag.
             String raw = element.getAsString();

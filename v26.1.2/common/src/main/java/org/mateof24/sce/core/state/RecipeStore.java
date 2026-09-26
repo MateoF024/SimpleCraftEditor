@@ -16,6 +16,7 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
@@ -56,11 +57,44 @@ public final class RecipeStore {
             });
             readArray(root, "hidden", id -> state.hidden().add(id));
             readArray(root, "disabled_generated", id -> state.disabledGenerated().add(id));
+            // The file may have been written by this mod on another version of the game, whose recipe
+            // JSON is not this one's. Put it into this version's shape before anything tries to read it,
+            // and write it back so the work is done once rather than on every start.
+            int written = root.has("data_version") && root.get("data_version").isJsonPrimitive()
+                    ? root.get("data_version").getAsInt() : 0;
+            int updated = RecipeMigration.apply(state, written);
+            if (updated > 0 || written != RecipeMigration.currentDataVersion()) {
+                if (updated > 0) {
+                    SimpleCraftEditor.LOGGER.info(
+                            "Updated {} stored recipe(s) written by another version of the game", updated);
+                }
+                if (updated > 0) {
+                    backup(path);
+                }
+                save(state);
+            }
         } catch (Exception e) {
             SimpleCraftEditor.LOGGER.error("Failed to read recipe state from {}", path, e);
         }
         perf.finish("{} disabled, {} of ours", state.disabled().size(), state.generated().size());
         return state;
+    }
+
+    /**
+     * The file as it was, kept beside it under {@code recipes.json.bak}.
+     *
+     * <p>Only before a rewrite this mod did on its own, which is the one write the player did not ask
+     * for. It is their authored work and there is exactly one copy of it; a conversion that goes wrong
+     * without one would be the worst thing this mod could do. One file rather than one per start, so it
+     * is the version that was carried over and not a pile.
+     */
+    private static void backup(Path path) {
+        try {
+            Files.copy(path, path.resolveSibling("recipes.json.bak"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // Worth saying, not worth stopping for: the recipes in memory are already correct.
+            SimpleCraftEditor.LOGGER.warn("Could not keep a copy of the recipe file before updating it", e);
+        }
     }
 
     public static void save(RecipeState state) {
@@ -69,6 +103,8 @@ public final class RecipeStore {
         try {
             Files.createDirectories(path.getParent());
             JsonObject root = new JsonObject();
+            // What wrote it, so the next version knows exactly how far to carry the item data inside.
+            root.addProperty("data_version", RecipeMigration.currentDataVersion());
 
             JsonObject disabled = new JsonObject();
             state.disabled().forEach((id, json) -> disabled.add(id.toString(), json == null ? JsonNull.INSTANCE : json));

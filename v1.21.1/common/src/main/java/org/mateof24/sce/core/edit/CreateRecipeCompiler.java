@@ -217,6 +217,29 @@ public final class CreateRecipeCompiler {
     }
 
     /**
+     * A fluid ingredient entry in the shape this version reads, or null when the entry is not one.
+     *
+     * <p>For a recipe crossing a version boundary. Create wrote its own flat entry up to 1.20.1 and
+     * hands the field to the platform's fluid ingredient after it - a change of shape, not of spelling,
+     * which nothing generic can carry. One entry in, one entry out: no draft is built and nothing else
+     * about the recipe is read, so none of the round trip's rounding applies.
+     */
+    public static JsonObject normaliseFluidIngredient(JsonObject entry) {
+        IngredientValue value = readFluidIngredient(entry);
+        return value == null ? null : fluidIngredientJson(value);
+    }
+
+    /** The same for a fluid result, which is a fluid stack rather than an ingredient. */
+    public static JsonObject normaliseFluidResult(JsonObject entry) {
+        IngredientValue value = readFluidResult(entry);
+        if (value == null) {
+            // The older spelling, which named a fluid result the way it named a fluid ingredient.
+            value = readFluidIngredient(entry);
+        }
+        return value == null || value.isFluidTag() ? null : fluidResultJson(value);
+    }
+
+    /**
      * Reads a fluid ingredient, or null when the entry is not a fluid.
      *
      * <p>Telling a fluid tag from an item tag is the delicate part: both are written as {@code tag}, and an

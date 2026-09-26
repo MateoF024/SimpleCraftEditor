@@ -37,6 +37,6 @@ public abstract class RecipeManagerMixin {
                                            ResourceManager resourceManager,
                                            ProfilerFiller profiler,
                                            CallbackInfo ci) {
-        RecipeStateManager.INSTANCE.beforeRecipeLoad(map);
+        RecipeStateManager.INSTANCE.beforeRecipeLoad(map, resourceManager);
     }
 }

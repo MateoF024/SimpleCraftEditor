@@ -199,13 +199,48 @@ public final class CreateRecipeCompiler {
         return json;
     }
 
-    /** Reads an inline fluid entry, single or tagged, or null if this entry is not a fluid. */
-    private static IngredientValue readFluid(JsonObject object) {
-        boolean tagged = object.has("fluidTag");
-        if (!tagged && !object.has("fluid")) {
+    /**
+     * A fluid ingredient entry in the shape this version reads, or null when the entry is not one.
+     *
+     * <p>For a recipe crossing a version boundary. Create wrote its own flat entry up to 1.20.1 and
+     * hands the field to the platform's fluid ingredient after it - a change of shape, not of spelling,
+     * which nothing generic can carry. One entry in, one entry out: no draft is built and nothing else
+     * about the recipe is read, so none of the round trip's rounding applies.
+     */
+    public static JsonObject normaliseFluidIngredient(JsonObject entry) {
+        IngredientValue value = readFluid(entry);
+        return value == null ? null : fluidJson(value);
+    }
+
+    /** The same for a fluid result, which is a fluid stack rather than an ingredient. */
+    public static JsonObject normaliseFluidResult(JsonObject entry) {
+        IngredientValue value = readFluid(entry);
+        if (value == null || value.isFluidTag()) {
             return null;
         }
-        ResourceLocation fluid = ResourceLocation.tryParse(object.get(tagged ? "fluidTag" : "fluid").getAsString());
+        JsonObject json = new JsonObject();
+        json.addProperty("fluid", value.id().toString());
+        json.addProperty("amount", IngredientValue.toPlatformAmount(value.amount()));
+        return json;
+    }
+
+    /**
+     * Reads an inline fluid entry, single or tagged, or null if this entry is not a fluid.
+     *
+     * <p>Read looser than it is written, so an entry that came from a later version still loads. From
+     * 1.21.1 Create hands this field to the platform's own fluid ingredient, which names its kind in
+     * {@code type} and a whole tag of fluids in {@code tag} rather than {@code fluidTag}. What tells
+     * that apart from an item tag is the {@code amount}: only a fluid is measured.
+     */
+    private static IngredientValue readFluid(JsonObject object) {
+        String key = object.has("fluid") ? "fluid"
+                : object.has("fluidTag") ? "fluidTag"
+                : (object.has("tag") && object.has("amount")) ? "tag" : null;
+        if (key == null) {
+            return null;
+        }
+        boolean tagged = !key.equals("fluid");
+        ResourceLocation fluid = ResourceLocation.tryParse(object.get(key).getAsString());
         if (fluid == null) {
             return null;
         }

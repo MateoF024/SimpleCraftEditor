@@ -1,5 +1,7 @@
 package org.mateof24.sce.core.edit;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.architectury.hooks.fluid.FluidStackHooks;
@@ -186,10 +188,53 @@ public final class IngredientValue {
      * — a list of alternatives, a compound wrapper, a block tag, a mod's own ingredient type — becomes
      * {@link Kind#RAW} and is carried through whole.
      */
+
+    /**
+     * The same ingredient written the way this version writes it.
+     *
+     * <p>An ingredient is {@code {"item": "x"}} here and a bare {@code "x"} from 1.21.2 on, and a tag is
+     * {@code {"tag": "x"}} here and {@code "#x"} there. A recipe stored by this mod on a newer version
+     * carries the newer shape, and this game's codec cannot read it - so it is put into this one on the
+     * way in. Kept sources are written back exactly as they came, which is what makes an untouched
+     * ingredient survive a save; normalising before the source is taken is what keeps that promise from
+     * also carrying a shape this version cannot read straight back out to the file.
+     *
+     * <p>Anything with a {@code type} is somebody's own kind of ingredient and is left alone. A list is
+     * a list of ingredients, so each of them goes through this too.
+     */
+    public static JsonElement normalise(JsonElement element) {
+        if (element == null) {
+            return null;
+        }
+        if (element.isJsonArray()) {
+            JsonArray out = new JsonArray();
+            for (JsonElement child : element.getAsJsonArray()) {
+                out.add(normalise(child));
+            }
+            return out;
+        }
+        if (!element.isJsonPrimitive()) {
+            return element;
+        }
+        String raw = element.getAsString();
+        boolean tagged = raw.startsWith("#");
+        // Only what is shaped like a resource id, and a written one always has its namespace. Every
+        // ingredient this mod writes does; a word that happens to sit under one of these keys in
+        // somebody else's recipe type does not, and turning that into an item would be inventing one.
+        if (!tagged && raw.indexOf(':') < 0) {
+            return element;
+        }
+        JsonObject out = new JsonObject();
+        out.addProperty(tagged ? "tag" : "item", tagged ? raw.substring(1) : raw);
+        return out;
+    }
+
     public static IngredientValue fromIngredientJson(JsonElement element) {
         if (element == null || element.isJsonNull()) {
             return empty();
         }
+        // Whatever version wrote it, read it as this one spells it.
+        element = normalise(element);
         if (element.isJsonObject()) {
             JsonObject object = element.getAsJsonObject();
             // A "type" means somebody's own ingredient kind. Even when it also carries a tag, that tag is

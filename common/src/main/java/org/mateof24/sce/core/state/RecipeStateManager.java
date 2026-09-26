@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
@@ -84,7 +85,7 @@ public final class RecipeStateManager {
      *
      * <p>The incoming map is also the full datapack recipe source, captured for the editor to load from.
      */
-    public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map) {
+    public void beforeRecipeLoad(Map<ResourceLocation, JsonElement> map, ResourceManager resources) {
         ScePerf.Run perf = ScePerf.start("recipe load");
         SceDebug.reportEnvironment();
         RecipeState s = state();
@@ -96,6 +97,14 @@ public final class RecipeStateManager {
                 "Recipes loading: {} in the pack. {} of our own are already in there before we add them (should be 0).",
                 map.size(), alreadyPresent);
         perf.stage("read our state");
+        // And the tags they name, against the game that is actually running: a tag that is gone
+        // matches nothing and says nothing, so it has to be asked about rather than waited for.
+        if (resources != null) {
+            int realigned = RecipeMigration.alignToThisVersion(s, resources);
+            if (realigned > 0) {
+                RecipeStore.save(s);
+            }
+        }
         rawJsonCache.clear();
         rawJsonCache.putAll(map);
         // A new load replaces the recipe set, so anything worked out from the old one is stale.
@@ -162,8 +171,32 @@ public final class RecipeStateManager {
             boolean off = s.isGeneratedDisabled(id);
             sb.append("\n  ").append(present ? "PRESENT" : "MISSING")
                     .append(off ? " (toggled off)" : "").append(" - ").append(id);
+            if (!present && !off) {
+                sb.append("\n      because: ").append(whyNotLoaded(id, s.generated().get(id)));
+            }
         }
         return sb.toString();
+    }
+
+    /**
+     * Why a stored recipe never reached the game.
+     *
+     * <p>The load says so once, in a log line, and then the reason is gone - while every screen goes on
+     * showing the recipe, because the manager draws its list and its icons from the stored file rather
+     * than from the game. That gap is exactly where a fault can sit unexplained for a whole test round,
+     * so the parse is simply run again and asked what it did not like.
+     */
+    private String whyNotLoaded(ResourceLocation id, JsonObject json) {
+        if (json == null) {
+            return "there is nothing stored under that id";
+        }
+        try {
+            RecipeManager.fromJson(id, json.deepCopy());
+            return "it reads back correctly now - it was something at the time of the load; see the log";
+        } catch (Exception e) {
+            String message = e.getMessage();
+            return message == null || message.isBlank() ? e.toString() : message;
+        }
     }
 
     public RecipeState state() {
