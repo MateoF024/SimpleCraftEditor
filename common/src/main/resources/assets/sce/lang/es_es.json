@@ -141,6 +141,7 @@
   "sce.msg.saved": "[SCE] Receta %s guardada",
   "sce.msg.rejected": "[SCE] La receta %s fue rechazada (definición no válida).",
   "sce.msg.no_permission": "[SCE] No tienes permiso para editar recetas.",
+  "sce.cmd.creative_only": "[SCE] Tienes que estar en modo creativo para usar los comandos de SCE.",
   "sce.cmd.disabled": "Receta %s desactivada",
   "sce.cmd.disable_failed": "La receta %s no está cargada o ya está desactivada.",
   "sce.cmd.enabled": "Receta %s reactivada",

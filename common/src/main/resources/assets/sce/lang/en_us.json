@@ -141,6 +141,7 @@
   "sce.msg.saved": "[SCE] Saved recipe %s",
   "sce.msg.rejected": "[SCE] Recipe %s was rejected (invalid definition).",
   "sce.msg.no_permission": "[SCE] You do not have permission to edit recipes.",
+  "sce.cmd.creative_only": "[SCE] You have to be in creative mode to use the SCE commands.",
   "sce.cmd.disabled": "Disabled recipe %s",
   "sce.cmd.disable_failed": "Recipe %s is not loaded, or is already disabled.",
   "sce.cmd.enabled": "Re-enabled recipe %s",

@@ -1,5 +1,6 @@
 package org.mateof24.sce.core.command;
 
+import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -39,17 +40,43 @@ public final class SceCommands {
     }
 
     /**
-     * The same rule the editor screens follow, so a command cannot do what the interface refuses.
+     * Who may see the command at all: the permission half of the editor's own rule.
      *
-     * <p>The console and command blocks are exempt from the game-mode half: they have no game mode, and
-     * the rule exists to stop a player editing recipes while playing, not to stop a server operator
-     * scripting one.
+     * <p>The game-mode half is checked when a command runs rather than here, because Brigadier does not
+     * refuse a node whose requirement fails - it hides it, and the player is told the command does not
+     * exist. That is a lie: the command exists and the player has the permission for it. It was also
+     * stale, since the command tree is sent on join and again on a permission change, but not when a
+     * player switches game mode, so someone who went into creative kept being told there was no such
+     * command until they reconnected.
      */
     private static boolean mayUse(CommandSourceStack source) {
-        if (!source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) {
-            return false;
-        }
+        return source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+    }
+
+    /**
+     * Whether the source may edit recipes right now, which is the half that depends on the game mode.
+     *
+     * <p>The console and command blocks are exempt: they have no game mode, and the rule exists to stop
+     * a player editing recipes while playing, not to stop a server operator scripting one.
+     */
+    private static boolean mayEditNow(CommandSourceStack source) {
         return !(source.getEntity() instanceof Player player) || SceNetworking.mayEdit(player);
+    }
+
+    /**
+     * The same command, refusing in words when the game mode says no.
+     *
+     * <p>Wrapped around every endpoint rather than checked inside each one, so that a command added
+     * later cannot forget it.
+     */
+    private static Command<CommandSourceStack> gated(Command<CommandSourceStack> command) {
+        return context -> {
+            if (!mayEditNow(context.getSource())) {
+                context.getSource().sendFailure(Component.translatable("sce.cmd.creative_only"));
+                return 0;
+            }
+            return command.run(context);
+        };
     }
 
     private static void build(CommandDispatcher<CommandSourceStack> dispatcher) {
@@ -57,24 +84,24 @@ public final class SceCommands {
                 .then(Commands.literal("disable")
                         .then(Commands.argument("recipe", IdentifierArgument.id())
                                 .suggests(suggestEditable())
-                                .executes(SceCommands::disable)))
+                                .executes(gated(SceCommands::disable))))
                 .then(Commands.literal("enable")
                         .then(Commands.argument("recipe", IdentifierArgument.id())
                                 .suggests(suggestDisabled())
-                                .executes(SceCommands::enable)))
+                                .executes(gated(SceCommands::enable))))
                 .then(Commands.literal("clone")
                         .then(Commands.argument("source", IdentifierArgument.id())
                                 .suggests(suggestEditable())
                                 .then(Commands.argument("target", IdentifierArgument.id())
-                                        .executes(SceCommands::cloneRecipe))))
+                                        .executes(gated(SceCommands::cloneRecipe)))))
                 .then(Commands.literal("delete")
                         .then(Commands.argument("recipe", IdentifierArgument.id())
                                 .suggests(suggestGenerated())
-                                .executes(SceCommands::deleteGenerated)))
+                                .executes(gated(SceCommands::deleteGenerated))))
                 .then(Commands.literal("list")
-                        .then(Commands.literal("disabled").executes(context -> list(context, "disabled")))
-                        .then(Commands.literal("generated").executes(context -> list(context, "generated"))))
-                .then(Commands.literal("reload").executes(SceCommands::reload))
+                        .then(Commands.literal("disabled").executes(gated(context -> list(context, "disabled"))))
+                        .then(Commands.literal("generated").executes(gated(context -> list(context, "generated")))))
+                .then(Commands.literal("reload").executes(gated(SceCommands::reload)))
                 .then(buildAnvil())
                 .then(buildDebug()));
     }
@@ -86,13 +113,13 @@ public final class SceCommands {
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildAnvil() {
         com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> anvil =
                 Commands.literal("anvil");
-        anvil.executes(SceCommands::anvilList);
+        anvil.executes(gated(SceCommands::anvilList));
         anvil.then(Commands.literal("test")
                 .then(Commands.argument("item", IdentifierArgument.id())
                         .suggests(suggestItems())
                         .then(Commands.argument("material", IdentifierArgument.id())
                                 .suggests(suggestItems())
-                                .executes(SceCommands::anvilTest))));
+                                .executes(gated(SceCommands::anvilTest)))));
         return anvil;
     }
 
@@ -155,13 +182,13 @@ public final class SceCommands {
      */
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildDebug() {
         com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug");
-        debug.then(Commands.literal("status").executes(SceCommands::debugStatus));
+        debug.then(Commands.literal("status").executes(gated(SceCommands::debugStatus)));
         // Reports, per authored recipe, whether it reached the live recipe manager — the direct answer to
         // "the editor saved it but the game does not have it", which is what a heavy modpack causes.
         debug.then(Commands.literal("find")
                 .then(Commands.argument("recipe", IdentifierArgument.id())
                         .suggests(suggestExisting())
-                        .executes(context -> {
+                        .executes(gated(context -> {
                             Identifier id = IdentifierArgument.getId(context, "recipe");
                             String report = RecipeStateManager.INSTANCE.findRecipe(context.getSource().getServer(), id);
                             for (String line : report.split("\n")) {
@@ -169,34 +196,34 @@ public final class SceCommands {
                             }
                             org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
                             return 1;
-                        })));
+                        }))));
         // The direct answer to "the key does not find a recipe I know exists": every recipe that makes an
         // item, whether it makes it as its main result or as one of its other outputs, and whether it can
         // be edited. A machine recipe usually lists the interesting item second or third.
         debug.then(Commands.literal("produces")
                 .then(Commands.argument("item", IdentifierArgument.id())
                         .suggests(suggestItems())
-                        .executes(SceCommands::debugProduces)));
-        debug.then(Commands.literal("verify").executes(context -> {
+                        .executes(gated(SceCommands::debugProduces))));
+        debug.then(Commands.literal("verify").executes(gated(context -> {
             String report = RecipeStateManager.INSTANCE.verifyGeneratedInManager(context.getSource().getServer());
             for (String line : report.split("\n")) {
                 context.getSource().sendSuccess(() -> Component.literal(line), false);
             }
             org.mateof24.sce.SimpleCraftEditor.LOGGER.info("[SCE-DBG] {}", report);
             return 1;
-        }));
+        })));
         debug.then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
-                .executes(context -> setDebug(context, null)));
+                .executes(gated(context -> setDebug(context, null))));
         for (SceDebug.Category category : SceDebug.Category.values()) {
             com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> literal =
                     Commands.literal(category.name().toLowerCase(java.util.Locale.ROOT))
                             .then(Commands.argument("on", com.mojang.brigadier.arguments.BoolArgumentType.bool())
-                                    .executes(context -> setDebug(context, category)));
+                                    .executes(gated(context -> setDebug(context, category))));
             if (category == SceDebug.Category.PERF) {
                 // Timing is the one category that produces a report worth reading on its own, so a bare
                 // "/sce debug perf" prints it. Turning it on and off still works like every other area.
-                literal.executes(SceCommands::perfReport)
-                        .then(Commands.literal("reset").executes(SceCommands::perfReset));
+                literal.executes(gated(SceCommands::perfReport))
+                        .then(Commands.literal("reset").executes(gated(SceCommands::perfReset)));
             }
             debug.then(literal);
         }
