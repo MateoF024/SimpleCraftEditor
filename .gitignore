@@ -20,6 +20,9 @@ hs_err_pid*
 # Common working directory
 run
 
+# Logs written by a subproject when the game is run from it
+logs/
+
 # Local reference/dependency jars (mods used only for compiling & study)
 libs
 

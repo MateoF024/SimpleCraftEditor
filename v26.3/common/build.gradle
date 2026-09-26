@@ -1,0 +1,21 @@
+architectury {
+    common(['fabric', 'neoforge'])
+}
+
+dependencies {
+    // Fabric Loader is used here only for the @Environment annotations, which get remapped
+    // to the correct annotations on each platform. Do NOT use other classes from Fabric Loader.
+    implementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
+
+    implementation "dev.architectury:architectury:${rootProject.architectury_api_v263}"
+
+    // JEI's API, for the integration code that lives in common. Compile-time only; the same
+    // mezz.jei.api classes ship in both loader jars, so the Fabric one is used here. Unobfuscated
+    // Minecraft needs no remapping, so it comes in plain. REI and EMI have no 26.3 build, so this tree
+    // carries neither - the day they do, it is a jar in libs/ and the integration back from v26.2/.
+    compileOnly fileTree(dir: "${rootProject.projectDir}/libs/v26.3/fabric", include: 'jei-*.jar')
+
+    // Farmer's Delight Refabricated is the one of the three compat mods with a 26.3 build, and it is
+    // Fabric-only. Compile-time only, and every use of it is behind a mod-loaded check.
+    compileOnly fileTree(dir: "${rootProject.projectDir}/libs/v26.3/fabric", include: 'FarmersDelight-*.jar')
+}
