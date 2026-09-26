@@ -1,5 +1,36 @@
 # Simple Craft Editor - Changelog
 
+## Version 1.3.0
+
+Minecraft 26.3, the anvil, three more mods, and recipes that survive moving between Minecraft versions.
+
+### Added
+
+- Minecraft **26.3**, on Fabric and NeoForge
+- **Anvil repair rules.** Tell the anvil what mends what: any item can be given its own repair material, or have the one it came with taken away. The rules have their own screen, `/sce anvil` lists them and says what the anvil would do with two given items, and JEI, EMI and REI show them like any other recipe
+- **Farmer's Delight**: the cutting board and the cooking pot
+- **The Twilight Forest**: the uncrafting table, drying, and repairing a scepter
+- **Cobblemon's brewing stand**, beside the campfire pot
+- **Recipes now survive a change of Minecraft version.** Move a world or an instance to another version — up, down, or several at once — and your edited, created and disabled recipes are brought with it. Recipe files changed shape twice across the versions this mod supports, and the mods it edits renamed their own fields on the way; every one of those is carried across on startup, checked against the version actually running
+- Both lists scroll with the game's own scroll bar, by wheel or by dragging it
+
+### Fixed
+
+- Several of Create's machine editors offered more slots than the machine itself accepts, so a recipe built in them came back as invalid. Every type now has the shape its own machine allows — the spout and manual application take one item and one fluid, the press gives two results, the crushing wheels give seven
+- An ingredient that lists several alternatives — Create's compatibility recipes, and any shaped recipe whose key holds a list — was emptied when the recipe was saved
+- In a recipe sequence: the filling step refused fluids, the step buttons would not step backwards, a result pool's weights were flattened to even, and part of the pool could not be reached
+- A recipe type the editor did not know but whose shape it resembled was opened as that shape, and lost fields it did not model when saved
+- Create's deployer and manual application lost their "keep held item" setting, which can now be set from the editor
+- On 1.20.1 the editor opened over an undimmed world
+- `/sce` commands reported that the command did not exist when the player was not in creative mode, and stayed missing after switching to creative until the player reconnected. They now say what they need
+
+### Changed
+
+- The editor's layout was reworked: a recipe type's own fields are measured, captioned and centred in one place, the space around the recipe is shared evenly, and the completion list stays inside the screen
+- A tag in a slot shows the items it holds through the same list a recipe viewer would show, so an ingredient that names several things no longer appears to name only the first
+
+---
+
 ## Version 1.2.0
 
 Five Minecraft versions, three more recipe types, and recipes that can care about the data on an item.
