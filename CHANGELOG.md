@@ -1,5 +1,15 @@
 # Simple Craft Editor - Changelog
 
+## Version 1.3.1
+
+A fix for shaped recipes that broke again every time the game started.
+
+### Fixed
+
+- Shaped recipes edited from a mod that writes its recipes with lower-case letters
+
+---
+
 ## Version 1.3.0
 
 Minecraft 26.3, the anvil, three more mods, and recipes that survive moving between Minecraft versions.
