@@ -6,7 +6,7 @@ A fix for shaped recipes that broke again every time the game started.
 
 ### Fixed
 
-- Shaped recipes edited from a mod that writes its recipes with lower-case letters
+- Shaped recipes derived from a mod using lowercase letters broke on every game launch.
 
 ---
 
