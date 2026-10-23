@@ -66,7 +66,7 @@ public final class RecipeStore {
             if (updated > 0 || written != RecipeMigration.currentDataVersion()) {
                 if (updated > 0) {
                     SimpleCraftEditor.LOGGER.info(
-                            "Updated {} stored recipe(s) written by another version of the game", updated);
+                            "Updated {} stored recipe(s) so this version of the game can read them", updated);
                 }
                 if (updated > 0) {
                     backup(path);

@@ -114,6 +114,10 @@ public final class RecipeMigration {
             renameKnownKeys(out);
         }
         fixDataStacks(out, fileVersion);
+        if (restoreKeyLetters(out)) {
+            SimpleCraftEditor.LOGGER.info("The stored recipe {} had its key letters renamed by version 1.3.0 "
+                    + "of this mod; they are back to the ones its pattern names", id);
+        }
         return out.equals(json) ? null : out;
     }
 
@@ -601,12 +605,29 @@ public final class RecipeMigration {
     }
 
     /**
+     * The objects whose keys are what a recipe says rather than what its fields are called.
+     *
+     * <p>A shaped recipe's {@code key} holds a letter per ingredient, and its pattern names those letters:
+     * {@code "A"} and {@code "a"} are two symbols, not one field spelt two ways. What a stack carries - its
+     * {@code components}, or its {@code nbt} on 1.20.1 - is keyed by content in the same way. Renaming a
+     * key in any of them does not carry a field across a version; it edits the recipe.
+     */
+    private static final Set<String> CONTENT_MAPS = Set.of("key", "components", "nbt");
+
+    /**
      * Spells this recipe's fields the way this version's own copy of it spells them.
      *
      * <p>Only a key that is missing here and present there, and only when the two are the same word
      * written differently - {@code acceptMirrored} and {@code accept_mirrored}, {@code transitionalItem}
      * and {@code transitional_item}. A field the author added, or one this version genuinely dropped, is
      * left alone: what is compared is spelling, not content, and a value is never taken from the copy.
+     *
+     * <p>Two names that differ only in their capitals are not that. Moving between the two conventions
+     * always adds or drops a separator, so {@code "A"} and {@code "a"} are different names, and the
+     * objects in {@link #CONTENT_MAPS} are not looked inside at all. Version 1.3.0 did both, and turned
+     * the {@code "A"} of every shaped recipe the editor saved into the {@code "a"} of a mod that writes
+     * its letters in lower case - every MCreator mod does - leaving the pattern still asking for
+     * {@code "A"}. See {@link #restoreKeyLetters}.
      */
     private static boolean alignTo(JsonObject json, JsonObject base) {
         boolean changed = false;
@@ -616,7 +637,7 @@ public final class RecipeMigration {
         }
         for (String key : List.copyOf(json.keySet())) {
             String now = theirs.get(sameWord(key));
-            if (now != null && !now.equals(key) && !json.has(now)) {
+            if (now != null && !now.equalsIgnoreCase(key) && !json.has(now)) {
                 JsonElement value = json.get(key);
                 json.remove(key);
                 json.add(now, value);
@@ -626,6 +647,9 @@ public final class RecipeMigration {
         // And the same, one level in, for the objects both of them have under the same name: a step of a
         // sequence, a result, an ingredient.
         for (String key : List.copyOf(json.keySet())) {
+            if (CONTENT_MAPS.contains(key)) {
+                continue;
+            }
             JsonElement mine = json.get(key);
             JsonElement other = base.get(key);
             if (mine != null && other != null && mine.isJsonObject() && other.isJsonObject()) {
@@ -653,6 +677,76 @@ public final class RecipeMigration {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Gives a shaped recipe back the key letters its pattern names, where version 1.3.0 renamed them.
+     *
+     * <p>That version renamed a letter to the case the mod's own copy of the recipe used and left the
+     * pattern as it was - see {@link #alignTo}. The game refuses a pattern naming a letter its key does
+     * not have, so the recipe went missing, and went missing again on every start however often it was
+     * made anew.
+     *
+     * <p>Only a letter the pattern names and the key lacks, and only when the key has exactly one other
+     * letter that is the same symbol in another case and that the pattern does not name. A recipe like
+     * that cannot load as it stands, so this can only make it load; and the rename only ever touched the
+     * letter, never the ingredient it stands for.
+     */
+    private static boolean restoreKeyLetters(JsonElement element) {
+        boolean changed = false;
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                changed |= restoreKeyLetters(child);
+            }
+            return changed;
+        }
+        if (!element.isJsonObject()) {
+            return false;
+        }
+        JsonObject object = element.getAsJsonObject();
+        JsonElement pattern = object.get("pattern");
+        JsonElement key = object.get("key");
+        if (pattern != null && pattern.isJsonArray() && key != null && key.isJsonObject()) {
+            changed = restoreLetters(pattern.getAsJsonArray(), key.getAsJsonObject());
+        }
+        // A recipe can hold another one whole - a conditional wrapper does - and that one was renamed too.
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            changed |= restoreKeyLetters(entry.getValue());
+        }
+        return changed;
+    }
+
+    /** One pattern and its key. True when any letter had to be given back. */
+    private static boolean restoreLetters(JsonArray pattern, JsonObject key) {
+        Set<String> named = new LinkedHashSet<>();
+        for (JsonElement row : pattern) {
+            if (!isString(row)) {
+                return false;
+            }
+            String text = row.getAsString();
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) != ' ') {
+                    named.add(String.valueOf(text.charAt(i)));
+                }
+            }
+        }
+        boolean changed = false;
+        for (String letter : named) {
+            if (key.has(letter)) {
+                continue;
+            }
+            List<String> renamed = new ArrayList<>();
+            for (String candidate : key.keySet()) {
+                if (!named.contains(candidate) && sameWord(candidate).equals(sameWord(letter))) {
+                    renamed.add(candidate);
+                }
+            }
+            if (renamed.size() == 1) {
+                key.add(letter, key.remove(renamed.get(0)));
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     /** One recipe's tags. True when any of them had to be rewritten. */
